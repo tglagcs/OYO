@@ -1,4 +1,5 @@
-# ⚡ Open YouTube Optimizer
+# ⚡ Open YouTube Optimizer 
+👍 **Now compatible with Chromium browsers!**
 
 > **Lightning-fast YouTube experience without distractions**  
 > A powerful userscript that removes bloat, optimizes performance, and gives you control over your YouTube interface.
