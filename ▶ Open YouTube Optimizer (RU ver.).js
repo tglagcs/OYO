@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         ▶ Open YouTube Optimizer (RU ver.)
-// @version      1.1
+// @version      1.2
 // @description  Скрипт улучшающий производительность и упрощающий интерфейс YouTube
 // @author       | tg: @lag_cs | github: tglagcs |
 // @match        https://*.youtube.com/*
@@ -13,6 +13,8 @@
 // @license      MIT
 // @icon         https://raw.githubusercontent.com/tglagcs/OYO/refs/heads/main/imgs/OYO%20ICO.png
 // ==/UserScript==
+
+// Version 1.2 - Now compatible with Chromium browsers.
 
 (function () {
     'use strict';
@@ -194,7 +196,7 @@
         createSettingsButton() {
             this.settingsButton = document.createElement('button');
             this.settingsButton.id = 'yt-optimizer-settings-btn';
-            this.settingsButton.innerHTML = '⚡';
+            this.settingsButton.textContent = '⚡';
             this.settingsButton.title = 'Open YouTube Optimizer Settings';
             this.settingsButton.setAttribute('aria-label', 'Open YouTube Optimizer Settings');
 
@@ -307,7 +309,247 @@
             });
         }
 
-        generateSettingsHTML() {
+        createSettingElement(setting) {
+            if (setting.type === 'select') {
+                const isDisabled = setting.disabled || false;
+
+                const container = document.createElement('div');
+                Object.assign(container.style, {
+                    marginBottom: '20px',
+                    opacity: isDisabled ? '0.5' : '1',
+                    padding: '16px',
+                    background: '#1a1a1a',
+                    borderRadius: '10px'
+                });
+
+                const label = document.createElement('label');
+                Object.assign(label.style, {
+                    display: 'block',
+                    marginBottom: '10px',
+                    fontWeight: '600',
+                    color: '#fff',
+                    fontSize: '16px'
+                });
+                label.textContent = setting.label;
+                label.htmlFor = `setting-${setting.key}`;
+
+                const select = document.createElement('select');
+                select.id = `setting-${setting.key}`;
+                Object.assign(select.style, {
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: '#2a2a2a',
+                    color: 'white',
+                    border: '1px solid #444',
+                    borderRadius: '8px',
+                    fontSize: '16px',
+                    outline: 'none',
+                    transition: 'border-color 0.2s',
+                    cursor: 'pointer'
+                });
+
+                if (isDisabled) {
+                    select.disabled = true;
+                }
+
+                setting.options.forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt.value;
+                    option.textContent = opt.label;
+                    if (CONFIG[setting.key] === opt.value) {
+                        option.selected = true;
+                    }
+                    select.appendChild(option);
+                });
+
+                container.appendChild(label);
+                container.appendChild(select);
+
+                if (setting.description) {
+                    const description = document.createElement('div');
+                    Object.assign(description.style, {
+                        fontSize: '14px',
+                        color: '#aaa',
+                        marginTop: '8px',
+                        lineHeight: '1.4'
+                    });
+                    description.textContent = setting.description;
+                    container.appendChild(description);
+                }
+
+                return container;
+            } else {
+                const isChecked = CONFIG[setting.key];
+
+                const container = document.createElement('div');
+                Object.assign(container.style, {
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    marginBottom: '20px',
+                    padding: '16px',
+                    background: '#1a1a1a',
+                    borderRadius: '10px',
+                    transition: 'background 0.2s',
+                    border: '1px solid #2a2a2a'
+                });
+
+                const checkboxContainer = document.createElement('div');
+                Object.assign(checkboxContainer.style, {
+                    flexShrink: '0',
+                    marginRight: '16px'
+                });
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `setting-${setting.key}`;
+                checkbox.checked = isChecked;
+                Object.assign(checkbox.style, {
+                    width: '22px',
+                    height: '22px',
+                    margin: '0',
+                    cursor: 'pointer',
+                    accentColor: '#ff0000'
+                });
+
+                checkboxContainer.appendChild(checkbox);
+
+                const contentContainer = document.createElement('div');
+                contentContainer.style.flexGrow = '1';
+
+                const label = document.createElement('label');
+                label.htmlFor = `setting-${setting.key}`;
+                Object.assign(label.style, {
+                    display: 'block',
+                    fontWeight: '600',
+                    color: '#fff',
+                    marginBottom: '6px',
+                    cursor: 'pointer',
+                    fontSize: '16px'
+                });
+                label.textContent = setting.label;
+
+                contentContainer.appendChild(label);
+
+                if (setting.description) {
+                    const description = document.createElement('div');
+                    Object.assign(description.style, {
+                        fontSize: '14px',
+                        color: '#aaa',
+                        lineHeight: '1.4'
+                    });
+                    description.textContent = setting.description;
+                    contentContainer.appendChild(description);
+                }
+
+                const statusContainer = document.createElement('div');
+                Object.assign(statusContainer.style, {
+                    flexShrink: '0',
+                    marginLeft: '16px'
+                });
+
+                const statusDot = document.createElement('span');
+                Object.assign(statusDot.style, {
+                    display: 'inline-block',
+                    width: '14px',
+                    height: '14px',
+                    borderRadius: '50%',
+                    background: isChecked ? '#4CAF50' : '#666'
+                });
+
+                statusContainer.appendChild(statusDot);
+
+                container.appendChild(checkboxContainer);
+                container.appendChild(contentContainer);
+                container.appendChild(statusContainer);
+
+                return container;
+            }
+        }
+
+        createModalContent() {
+            const fragment = document.createDocumentFragment();
+            const container = document.createElement('div');
+
+            // Заголовок
+            const titleContainer = document.createElement('div');
+            titleContainer.style.marginBottom = '24px';
+
+            const title = document.createElement('h2');
+            Object.assign(title.style, {
+                margin: '0 0 12px 0',
+                color: '#fff',
+                fontSize: '28px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px'
+            });
+
+            const iconSpan = document.createElement('span');
+            Object.assign(iconSpan.style, {
+                background: 'linear-gradient(135deg, #ff0000, #cc0000)',
+                width: '36px',
+                height: '36px',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+            });
+            iconSpan.textContent = '⚡';
+
+            const titleText = document.createTextNode(' Open YouTube Optimizer by @lag_cs');
+
+            title.appendChild(iconSpan);
+            title.appendChild(titleText);
+
+            const version = document.createElement('p');
+            Object.assign(version.style, {
+                margin: '0',
+                color: '#aaa',
+                fontSize: '16px'
+            });
+            version.textContent = 'Версия 1.2';
+
+            titleContainer.appendChild(title);
+            titleContainer.appendChild(version);
+
+            // Статистика
+            const appliedFeatures = Object.values(CONFIG).filter(v => v === true).length;
+            const statsContainer = document.createElement('div');
+            Object.assign(statsContainer.style, {
+                background: '#1a1a1a',
+                padding: '16px',
+                borderRadius: '10px',
+                marginBottom: '24px',
+                borderLeft: '4px solid #ff0000'
+            });
+
+            const statsRow = document.createElement('div');
+            Object.assign(statsRow.style, {
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+            });
+
+            const statsText = document.createElement('span');
+            Object.assign(statsText.style, {
+                fontWeight: '500',
+                fontSize: '16px'
+            });
+
+            const appliedSpan = document.createElement('strong');
+            appliedSpan.style.color = '#4CAF50';
+            appliedSpan.textContent = appliedFeatures.toString();
+
+            statsText.appendChild(document.createTextNode('Применено оптимизаций: '));
+            statsText.appendChild(appliedSpan);
+
+            statsRow.appendChild(statsText);
+            statsContainer.appendChild(statsRow);
+
+            container.appendChild(titleContainer);
+            container.appendChild(statsContainer);
+
+            // Категории настроек
             const categories = {
                 'Основные настройки': [
                     { key: 'disableAnimations', label: 'Отключить анимации', description: 'Убирает CSS-анимации и переходы' },
@@ -349,230 +591,139 @@
                 ]
             };
 
-            const appliedFeatures = Object.values(CONFIG).filter(v => v === true).length;
+            // Добавляем все категории
+            Object.entries(categories).forEach(([categoryName, settings]) => {
+                const categoryDiv = document.createElement('div');
+                categoryDiv.style.marginBottom = '28px';
 
-            return `
-                <div style="margin-bottom: 24px;">
-                    <h2 style="margin: 0 0 12px 0; color: #fff; font-size: 28px; display: flex; align-items: center; gap: 10px;">
-                        <span style="background: linear-gradient(135deg, #ff0000, #cc0000); width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">⚡</span>
-                        Open YouTube Optimizer by @lag_cs
-                    </h2>
-                    <p style="margin: 0; color: #aaa; font-size: 16px;">Версия 1.1</p>
-                </div>
+                const categoryTitle = document.createElement('h3');
+                Object.assign(categoryTitle.style, {
+                    margin: '0 0 16px 0',
+                    color: '#fff',
+                    fontSize: '20px',
+                    paddingBottom: '10px',
+                    borderBottom: '2px solid #333',
+                    fontWeight: '600'
+                });
+                categoryTitle.textContent = categoryName;
 
-                <div style="background: #1a1a1a; padding: 16px; border-radius: 10px; margin-bottom: 24px; border-left: 4px solid #ff0000;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-weight: 500; font-size: 16px;">
-                            Применено оптимизаций: <strong style="color: #4CAF50;">${appliedFeatures}</strong>
-                        </span>
-                    </div>
-                </div>
+                categoryDiv.appendChild(categoryTitle);
 
-                ${Object.entries(categories).map(([categoryName, settings]) => `
-                    <div style="margin-bottom: 28px;">
-                        <h3 style="
-                            margin: 0 0 16px 0;
-                            color: #fff;
-                            font-size: 20px;
-                            padding-bottom: 10px;
-                            border-bottom: 2px solid #333;
-                            font-weight: 600;
-                        ">
-                            ${categoryName}
-                        </h3>
-                        ${settings.map(setting => this.renderSetting(setting)).join('')}
-                    </div>
-                `).join('')}
+                // Добавляем настройки категории
+                settings.forEach(setting => {
+                    const settingElement = this.createSettingElement(setting);
+                    categoryDiv.appendChild(settingElement);
+                });
 
-                <div style="
-                    display: flex;
-                    gap: 16px;
-                    margin-top: 32px;
-                    padding-top: 24px;
-                    border-top: 2px solid #333;
-                ">
-                    <button
-                        id="yt-optimizer-apply"
-                        style="
-                            flex: 1;
-                            padding: 16px 24px;
-                            background: linear-gradient(135deg, #ff0000, #cc0000);
-                            color: white;
-                            border: none;
-                            border-radius: 12px;
-                            font-size: 18px;
-                            font-weight: 600;
-                            cursor: pointer;
-                            transition: all 0.2s;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            gap: 12px;
-                        "
-                    >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                            <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                            <polyline points="7 3 7 8 15 8"></polyline>
-                        </svg>
-                        Применить и перезагрузить
-                    </button>
-                    <button
-                        id="yt-optimizer-reset"
-                        style="
-                            padding: 16px 24px;
-                            background: #333;
-                            color: white;
-                            border: none;
-                            border-radius: 12px;
-                            font-size: 16px;
-                            cursor: pointer;
-                            transition: background 0.2s;
-                            font-weight: 500;
-                        "
-                    >
-                        Сбросить
-                    </button>
-                </div>
+                container.appendChild(categoryDiv);
+            });
 
-                <div style="
-                    margin-top: 20px;
-                    font-size: 14px;
-                    color: #666;
-                    text-align: center;
-                    padding: 12px;
-                    background: #1a1a1a;
-                    border-radius: 8px;
-                ">
-                    ⚠ Изменения вступят в силу после перезагрузки страницы
-                </div>
-            `;
-        }
+            // Кнопки действий
+            const actionsDiv = document.createElement('div');
+            Object.assign(actionsDiv.style, {
+                display: 'flex',
+                gap: '16px',
+                marginTop: '32px',
+                paddingTop: '24px',
+                borderTop: '2px solid #333'
+            });
 
-        renderSetting(setting) {
-            if (setting.type === 'select') {
-                const isDisabled = setting.disabled || false;
-                return `
-                    <div style="
-                        margin-bottom: 20px;
-                        opacity: ${isDisabled ? '0.5' : '1'};
-                        padding: 16px;
-                        background: #1a1a1a;
-                        border-radius: 10px;
-                    ">
-                        <label style="
-                            display: block;
-                            margin-bottom: 10px;
-                            font-weight: 600;
-                            color: #fff;
-                            font-size: 16px;
-                        ">
-                            ${setting.label}
-                        </label>
-                        <select
-                            id="setting-${setting.key}"
-                            style="
-                                width: 100%;
-                                padding: 12px 16px;
-                                background: #2a2a2a;
-                                color: white;
-                                border: 1px solid #444;
-                                border-radius: 8px;
-                                font-size: 16px;
-                                outline: none;
-                                transition: border-color 0.2s;
-                                cursor: pointer;
-                            "
-                            ${isDisabled ? 'disabled' : ''}
-                        >
-                            ${setting.options.map(opt => `
-                                <option value="${opt.value}" ${CONFIG[setting.key] === opt.value ? 'selected' : ''}>
-                                    ${opt.label}
-                                </option>
-                            `).join('')}
-                        </select>
-                        ${setting.description ? `
-                            <div style="
-                                font-size: 14px;
-                                color: #aaa;
-                                margin-top: 8px;
-                                line-height: 1.4;
-                            ">
-                                ${setting.description}
-                            </div>
-                        ` : ''}
-                    </div>
-                `;
-            } else {
-                const isChecked = CONFIG[setting.key];
-                return `
-                    <div style="
-                        display: flex;
-                        align-items: flex-start;
-                        margin-bottom: 20px;
-                        padding: 16px;
-                        background: #1a1a1a;
-                        border-radius: 10px;
-                        transition: background 0.2s;
-                        border: 1px solid #2a2a2a;
-                    ">
-                        <div style="flex-shrink: 0; margin-right: 16px;">
-                            <input
-                                type="checkbox"
-                                id="setting-${setting.key}"
-                                ${isChecked ? 'checked' : ''}
-                                style="
-                                    width: 22px;
-                                    height: 22px;
-                                    margin: 0;
-                                    cursor: pointer;
-                                    accent-color: #ff0000;
-                                "
-                            >
-                        </div>
-                        <div style="flex-grow: 1;">
-                            <label
-                                for="setting-${setting.key}"
-                                style="
-                                    display: block;
-                                    font-weight: 600;
-                                    color: #fff;
-                                    margin-bottom: 6px;
-                                    cursor: pointer;
-                                    font-size: 16px;
-                                "
-                            >
-                                ${setting.label}
-                            </label>
-                            ${setting.description ? `
-                                <div style="
-                                    font-size: 14px;
-                                    color: #aaa;
-                                    line-height: 1.4;
-                                ">
-                                    ${setting.description}
-                                </div>
-                            ` : ''}
-                        </div>
-                        <div style="flex-shrink: 0; margin-left: 16px;">
-                            <span style="
-                                display: inline-block;
-                                width: 14px;
-                                height: 14px;
-                                border-radius: 50%;
-                                background: ${isChecked ? '#4CAF50' : '#666'};
-                            "></span>
-                        </div>
-                    </div>
-                `;
-            }
+            // Кнопка Применить
+            const applyBtn = document.createElement('button');
+            applyBtn.id = 'yt-optimizer-apply';
+            Object.assign(applyBtn.style, {
+                flex: '1',
+                padding: '16px 24px',
+                background: 'linear-gradient(135deg, #ff0000, #cc0000)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '12px',
+                fontSize: '18px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '12px'
+            });
+
+            const applyIcon = document.createElement('span');
+            // Безопасный SVG без innerHTML
+            const applySvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            applySvg.setAttribute('width', '20');
+            applySvg.setAttribute('height', '20');
+            applySvg.setAttribute('viewBox', '0 0 24 24');
+            applySvg.setAttribute('fill', 'none');
+            applySvg.setAttribute('stroke', 'currentColor');
+            applySvg.setAttribute('stroke-width', '2');
+
+            const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path1.setAttribute('d', 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z');
+            const polyline1 = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+            polyline1.setAttribute('points', '17 21 17 13 7 13 7 21');
+            const polyline2 = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+            polyline2.setAttribute('points', '7 3 7 8 15 8');
+
+            applySvg.appendChild(path1);
+            applySvg.appendChild(polyline1);
+            applySvg.appendChild(polyline2);
+            applyIcon.appendChild(applySvg);
+
+            applyBtn.appendChild(applyIcon);
+            applyBtn.appendChild(document.createTextNode(' Применить и перезагрузить'));
+
+            // Кнопка Сбросить
+            const resetBtn = document.createElement('button');
+            resetBtn.id = 'yt-optimizer-reset';
+            Object.assign(resetBtn.style, {
+                padding: '16px 24px',
+                background: '#333',
+                color: 'white',
+                border: 'none',
+                borderRadius: '12px',
+                fontSize: '16px',
+                cursor: 'pointer',
+                transition: 'background 0.2s',
+                fontWeight: '500'
+            });
+            resetBtn.textContent = 'Сбросить';
+
+            actionsDiv.appendChild(applyBtn);
+            actionsDiv.appendChild(resetBtn);
+            container.appendChild(actionsDiv);
+
+            // Предупреждение
+            const warningDiv = document.createElement('div');
+            Object.assign(warningDiv.style, {
+                marginTop: '20px',
+                fontSize: '14px',
+                color: '#666',
+                textAlign: 'center',
+                padding: '12px',
+                background: '#1a1a1a',
+                borderRadius: '8px'
+            });
+            warningDiv.textContent = '⚠ Изменения вступят в силу после перезагрузки страницы';
+
+            container.appendChild(warningDiv);
+            fragment.appendChild(container);
+
+            return fragment;
         }
 
         open() {
             if (this.isOpen) return;
 
             this.createModal();
-            this.modal.innerHTML = this.generateSettingsHTML();
+
+            // Очищаем и добавляем новое содержимое
+            while (this.modal.firstChild) {
+                this.modal.removeChild(this.modal.firstChild);
+            }
+
+            const content = this.createModalContent();
+            this.modal.appendChild(content);
 
             document.body.appendChild(this.overlay);
             document.body.appendChild(this.modal);
@@ -619,6 +770,12 @@
                                 this.settingsButton.style.display = 'none';
                             }
                         }
+
+                        // Обновляем статус точки
+                        const statusDot = element.closest('div[style*="display: flex"]')?.querySelector('span[style*="border-radius: 50%"]');
+                        if (statusDot) {
+                            statusDot.style.background = e.target.checked ? '#4CAF50' : '#666';
+                        }
                     });
                 } else if (element.tagName === 'SELECT') {
                     element.addEventListener('change', (e) => {
@@ -629,32 +786,39 @@
 
             // Кнопка применения
             const applyBtn = document.getElementById('yt-optimizer-apply');
-            applyBtn.addEventListener('mouseenter', () => {
-                applyBtn.style.transform = 'translateY(-2px)';
-                applyBtn.style.boxShadow = '0 8px 20px rgba(255, 0, 0, 0.3)';
-            });
+            if (applyBtn) {
+                applyBtn.addEventListener('mouseenter', () => {
+                    applyBtn.style.transform = 'translateY(-2px)';
+                    applyBtn.style.boxShadow = '0 8px 20px rgba(255, 0, 0, 0.3)';
+                });
 
-            applyBtn.addEventListener('mouseleave', () => {
-                applyBtn.style.transform = 'translateY(0)';
-                applyBtn.style.boxShadow = 'none';
-            });
+                applyBtn.addEventListener('mouseleave', () => {
+                    applyBtn.style.transform = 'translateY(0)';
+                    applyBtn.style.boxShadow = 'none';
+                });
 
-            applyBtn.addEventListener('click', () => this.applySettings());
+                applyBtn.addEventListener('click', () => this.applySettings());
+            }
 
             // Кнопка сброса
-            document.getElementById('yt-optimizer-reset').addEventListener('click', () => {
-                if (confirm('Сбросить все настройки к значениям по умолчанию?')) {
-                    CONFIG = { ...DEFAULT_CONFIG };
-                    this.rebuildModal();
-                }
-            });
+            const resetBtn = document.getElementById('yt-optimizer-reset');
+            if (resetBtn) {
+                resetBtn.addEventListener('click', () => {
+                    if (confirm('Сбросить все настройки к значениям по умолчанию?')) {
+                        CONFIG = { ...DEFAULT_CONFIG };
+                        this.rebuildModal();
+                    }
+                });
+            }
 
             // Закрытие при клике вне модального окна
-            this.overlay.addEventListener('click', (e) => {
-                if (e.target === this.overlay) {
-                    this.close();
-                }
-            });
+            if (this.overlay) {
+                this.overlay.addEventListener('click', (e) => {
+                    if (e.target === this.overlay) {
+                        this.close();
+                    }
+                });
+            }
         }
 
         rebuildModal() {
@@ -663,8 +827,14 @@
             // Сохраняем позицию прокрутки
             const scrollTop = this.modal.scrollTop;
 
-            // Перестраиваем содержимое
-            this.modal.innerHTML = this.generateSettingsHTML();
+            // Очищаем содержимое
+            while (this.modal.firstChild) {
+                this.modal.removeChild(this.modal.firstChild);
+            }
+
+            // Создаем новое содержимое
+            const content = this.createModalContent();
+            this.modal.appendChild(content);
             this.addEventListeners();
 
             // Восстанавливаем позицию прокрутки
@@ -680,16 +850,43 @@
 
                 // Обновляем кнопку
                 const applyBtn = document.getElementById('yt-optimizer-apply');
-                applyBtn.innerHTML = `
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="7 10 12 15 17 10"></polyline>
-                        <line x1="12" y1="15" x2="12" y2="3"></line>
-                    </svg>
-                    Сохранено...
-                `;
-                applyBtn.disabled = true;
-                applyBtn.style.opacity = '0.7';
+                if (applyBtn) {
+                    // Очищаем содержимое кнопки
+                    while (applyBtn.firstChild) {
+                        applyBtn.removeChild(applyBtn.firstChild);
+                    }
+
+                    // Создаем новый SVG
+                    const savedSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                    savedSvg.setAttribute('width', '20');
+                    savedSvg.setAttribute('height', '20');
+                    savedSvg.setAttribute('viewBox', '0 0 24 24');
+                    savedSvg.setAttribute('fill', 'none');
+                    savedSvg.setAttribute('stroke', 'currentColor');
+                    savedSvg.setAttribute('stroke-width', '2');
+
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.setAttribute('d', 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4');
+                    const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                    polyline.setAttribute('points', '7 10 12 15 17 10');
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', '12');
+                    line.setAttribute('y1', '15');
+                    line.setAttribute('x2', '12');
+                    line.setAttribute('y2', '3');
+
+                    savedSvg.appendChild(path);
+                    savedSvg.appendChild(polyline);
+                    savedSvg.appendChild(line);
+
+                    const iconSpan = document.createElement('span');
+                    iconSpan.appendChild(savedSvg);
+
+                    applyBtn.appendChild(iconSpan);
+                    applyBtn.appendChild(document.createTextNode(' Сохранено...'));
+                    applyBtn.disabled = true;
+                    applyBtn.style.opacity = '0.7';
+                }
 
                 // Перезагружаем страницу через 2 секунды
                 setTimeout(() => {
@@ -731,16 +928,63 @@
                 maxWidth: '400px'
             });
 
-            notification.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        ${type === 'success' ? '<polyline points="20 6 9 17 4 12"></polyline>' :
-                          type === 'error' ? '<line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>' :
-                          '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>'}
-                    </svg>
-                    <span>${message}</span>
-                </div>
-            `;
+            // Создаем содержимое уведомления
+            const contentDiv = document.createElement('div');
+            contentDiv.style.display = 'flex';
+            contentDiv.style.alignItems = 'center';
+            contentDiv.style.gap = '12px';
+
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('width', '22');
+            svg.setAttribute('height', '22');
+            svg.setAttribute('viewBox', '0 0 24 24');
+            svg.setAttribute('fill', 'none');
+            svg.setAttribute('stroke', 'currentColor');
+            svg.setAttribute('stroke-width', '2');
+
+            if (type === 'success') {
+                const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                polyline.setAttribute('points', '20 6 9 17 4 12');
+                svg.appendChild(polyline);
+            } else if (type === 'error') {
+                const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line1.setAttribute('x1', '18');
+                line1.setAttribute('y1', '6');
+                line1.setAttribute('x2', '6');
+                line1.setAttribute('y2', '18');
+                const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line2.setAttribute('x1', '6');
+                line2.setAttribute('y1', '6');
+                line2.setAttribute('x2', '18');
+                line2.setAttribute('y2', '18');
+                svg.appendChild(line1);
+                svg.appendChild(line2);
+            } else {
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', '12');
+                circle.setAttribute('cy', '12');
+                circle.setAttribute('r', '10');
+                const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line1.setAttribute('x1', '12');
+                line1.setAttribute('y1', '8');
+                line1.setAttribute('x2', '12');
+                line1.setAttribute('y2', '12');
+                const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line2.setAttribute('x1', '12');
+                line2.setAttribute('y1', '16');
+                line2.setAttribute('x2', '12.01');
+                line2.setAttribute('y2', '16');
+                svg.appendChild(circle);
+                svg.appendChild(line1);
+                svg.appendChild(line2);
+            }
+
+            const textSpan = document.createElement('span');
+            textSpan.textContent = message;
+
+            contentDiv.appendChild(svg);
+            contentDiv.appendChild(textSpan);
+            notification.appendChild(contentDiv);
 
             document.body.appendChild(notification);
 
@@ -760,7 +1004,11 @@
             // Удаляем через 3 секунды
             setTimeout(() => {
                 notification.style.animation = 'slideIn 0.3s ease reverse';
-                setTimeout(() => notification.remove(), 300);
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
             }, 3000);
         }
 
@@ -1071,7 +1319,7 @@
 
                                     if (targetQualityItem) {
                                         targetQualityItem.click();
-                                        Logger.log(`Quality selected from menu: ${CONFIG.maxPrice}`);
+                                        Logger.log(`Quality selected from menu: ${CONFIG.maxQuality}`);
                                         qualityApplied = true;
                                     }
 
@@ -1226,7 +1474,7 @@
     // MAIN INITIALIZATION
     // ============================================================================
     function initialize() {
-        Logger.log('Initializing Open YouTube Optimizer v1.1...');
+        Logger.log('Initializing Open YouTube Optimizer v1.2...');
         Logger.log('Config loaded:', CONFIG);
 
         // Инициализируем UI
