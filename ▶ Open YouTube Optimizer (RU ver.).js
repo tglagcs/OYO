@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ▶ Open YouTube Optimizer 2.0 (RU ver.)
 // @version      2.0
-// @description  Усовершенствованный скрипт для повышения производительности упрощения интерфейса YouTube.
+// @description  Усовершенствованный скрипт для повышения производительности и упрощения интерфейса YouTube.
 // @author       | tg: @lag_cs | github: tglagcs |
 // @match        https://*.youtube.com/*
 // @match        https://*.youtube-nocookie.com/*
