@@ -1,112 +1,1057 @@
 // ==UserScript==
-// @name         ▶ Open YouTube Optimizer (RU ver.)
-// @version      1.2
-// @description  Скрипт улучшающий производительность и упрощающий интерфейс YouTube
+// @name         ▶ Open YouTube Optimizer 2.0 (RU ver.)
+// @version      2.0
+// @description  Усовершенствованный скрипт для повышения производительности упрощения интерфейса YouTube.
 // @author       | tg: @lag_cs | github: tglagcs |
 // @match        https://*.youtube.com/*
 // @match        https://*.youtube-nocookie.com/*
+// @exclude      /^https?:\/\/\S+\.(txt|png|jpg|jpeg|gif|xml|svg|manifest|log|ini)[^\/]*$/
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
-// @grant        GM_notification
 // @run-at       document-start
+// @grant        unsafeWindow
 // @license      MIT
-// @icon         https://raw.githubusercontent.com/tglagcs/OYO/refs/heads/main/imgs/OYO%20ICO.png
+// @icon         https://raw.githubusercontent.com/tglagcs/OYO/main/imgs/OYO%20ICO.png
 // ==/UserScript==
-
-// Version 1.2 - Now compatible with Chromium browsers.
 
 (function () {
     'use strict';
 
+    // For Chromium compatible
+    try {
+        if (window.trustedTypes && window.trustedTypes.createPolicy) {
+            window.trustedTypes.createPolicy('default', {
+                createHTML: (string) => string,
+                createScript: (string) => string,
+                createScriptURL: (string) => string,
+            });
+        }
+    } catch (e) {}
+
     // ============================================================================
-    // CONFIGURATION SYSTEM
+    // CONFIGURATION
     // ============================================================================
     const DEFAULT_CONFIG = {
-        // Основные настройки
+        // ⚡ Performance
         disableAnimations: true,
         throttleTimers: true,
-        removeJunkUI: true,
+        lazyLoadImages: true,
+        memoryLeakFix: true,
+        optimizeThumbnails: true,
 
-        // Расширенные настройки
+        // 🎨 Appearance & Layout
+        simplifyUI: true,
+        disableBlurEffects: true,
+        disableShadows: true,
+        disableNotifications: true,
+
+        // 🚫 Content Blocking
+        removeAds: true,
         removeShorts: true,
         removeComments: true,
+        removeTrending: true,
+        removeLiveChat: true,
+        removePromo: true,
+
+        // 🎬 Player
         disableAutoplay: true,
-        simplifyUI: true,
         limitVideoQuality: true,
         maxQuality: '1080p',
+        disablePlayerGradients: true,
+        disablePlayerWatermarkAndAnnotations: true,
+        removeInfoAndPlayerCards: true,
+        removeEndScreen: true,
 
-        // Экспериментальные
-        lazyLoadImages: true,
-
-        // UI настройки
-        showSettingsButton: true
+        // ⚙️ OYO Settings
+        showSettingsButton: true,
     };
 
-    // Загрузка сохраненной конфигурации
     function loadConfig() {
         try {
-            const saved = GM_getValue('ytOptimizerConfig');
-            if (saved) {
-                return { ...DEFAULT_CONFIG, ...JSON.parse(saved) };
+            const raw = GM_getValue('ytOptimizerConfig', null);
+
+            if (raw === null || raw === undefined) {
+                return {
+                    ...DEFAULT_CONFIG
+                };
             }
+
+            let parsed;
+            if (typeof raw === 'string') {
+                parsed = JSON.parse(raw);
+            } else if (typeof raw === 'object') {
+                parsed = raw;
+            } else {
+                return {
+                    ...DEFAULT_CONFIG
+                };
+            }
+
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                return {
+                    ...DEFAULT_CONFIG
+                };
+            }
+
+            return {
+                ...DEFAULT_CONFIG,
+                ...parsed
+            };
         } catch (e) {
-            console.error('Failed to load config:', e);
+            return {
+                ...DEFAULT_CONFIG
+            };
         }
-        return DEFAULT_CONFIG;
     }
 
-    // Сохранение конфигурации
     function saveConfig(config) {
         try {
-            GM_setValue('ytOptimizerConfig', JSON.stringify(config));
+            if (!config || typeof config !== 'object' || Array.isArray(config)) {
+                return false;
+            }
+
+            const configToSave = {};
+
+            for (const key in DEFAULT_CONFIG) {
+                if (config.hasOwnProperty(key)) {
+                    configToSave[key] = config[key];
+                } else {
+                    configToSave[key] = DEFAULT_CONFIG[key];
+                }
+            }
+
+            const configStr = JSON.stringify(configToSave);
+
+            GM_setValue('ytOptimizerConfig', configStr);
+
             return true;
-        } catch (e) {
-            console.error('Failed to save config:', e);
-            return false;
-        }
+        } catch (e) {}
     }
 
-    // Инициализация конфигурации
-    let CONFIG = loadConfig();
-
-    // Проверка на повторную инъекцию
     if (window.__ytOptimizerProInjected) return;
     window.__ytOptimizerProInjected = true;
 
-    // ============================================================================
-    // UTILITIES
-    // ============================================================================
-    class Logger {
-        static enabled = true;
-        static prefix = '[YT-Optimizer Pro]';
+    let CONFIG = loadConfig();
 
-        static log(message, data = null) {
-            if (!this.enabled) return;
-            console.log(`${this.prefix} ${message}`, data || '');
+    function validateConfig(config) {
+        const validConfig = {
+            ...DEFAULT_CONFIG
+        };
+        let hasChanges = false;
+
+        Object.keys(DEFAULT_CONFIG)
+            .forEach(key => {
+                if (config.hasOwnProperty(key)) {
+                    const value = config[key];
+                    const defaultValue = DEFAULT_CONFIG[key];
+
+                    if (typeof value === typeof defaultValue) {
+                        validConfig[key] = value;
+                    } else {
+                        hasChanges = true;
+                    }
+                } else {
+                    hasChanges = true;
+                }
+            });
+        if (hasChanges) {
+            saveConfig(validConfig);
+        }
+        return validConfig;
+    }
+
+    CONFIG = validateConfig(CONFIG);
+
+    // ============================================================================
+    // CSS INJECTION
+    // ============================================================================
+    function injectAdvancedCSS() {
+        const BASE_HIDE_SELECTORS = [
+            'ytd-reel-shelf-renderer',
+            'ytd-rich-shelf-renderer',
+            'ytd-rich-section-renderer',
+            'ytd-watch-next-secondary-results-renderer',
+            'ytm-rich-shelf-renderer',
+            'ytm-search ytm-shelf-renderer',
+            'ytm-reel-shelf-renderer',
+            'ytm-rich-section-renderer',
+            'ytm-pivot-bar-item-renderer:has(> .pivot-shorts)',
+            '.ytGridShelfViewModelHost'
+        ].join(',');
+
+        const hide = (selectors) => `${selectors} { display: none !important; }`;
+
+        const rules = [];
+
+        // ===== ADS =====
+        if (CONFIG.removeAds) {
+            rules.push(`
+            #primary.ytd-watch-flexy { margin-top:0 !important; padding-top:0 !important; }
+            #masthead-container { height:10px !important; min-height:10px !important; }
+        `);
+
+            rules.push(hide([
+                'ytd-merch-shelf-renderer',
+                'ytd-action-companion-ad-renderer',
+                'ytd-display-ad-renderer',
+                'ytd-video-masthead-ad-advertiser-info-renderer',
+                'ytd-video-masthead-ad-primary-video-renderer',
+                'ytd-in-feed-ad-layout-renderer',
+                'ytd-ad-slot-renderer',
+                'ytd-statement-banner-renderer',
+                'ytd-banner-promo-renderer-background',
+                'ytd-ads-engagement-panel-content-renderer',
+                'ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-ads"]',
+                'ytd-rich-item-renderer:has(> #content > ytd-ad-slot-renderer)',
+                '.ytd-video-masthead-ad-v3-renderer',
+                '#player-ads.style-scope.ytd-watch-flexy',
+                'yt-about-this-ad-renderer',
+                'masthead-ad',
+                'ad-slot-renderer',
+                'yt-mealbar-promo-renderer',
+                'tp-yt-iron-overlay-backdrop',
+                '#masthead-ad',
+                '#expandable-metadata',
+                '#clarify-box',
+                'statement-banner-style-type-compact',
+                'ytm-promoted-sparkles-web-renderer',
+                BASE_HIDE_SELECTORS
+            ].join(',')));
         }
 
-        static warn(message) {
-            console.warn(`${this.prefix} ⚠ ${message}`);
+        if (CONFIG.removeShorts) {
+            rules.push(hide([
+                '[is-shorts]',
+                '#shorts-container',
+                'ytd-guide-entry-renderer[title="Shorts"]',
+                '.ytd-mini-guide-entry-renderer[href="/shorts/"]',
+                BASE_HIDE_SELECTORS
+            ].join(',')));
         }
 
-        static error(message, error) {
-            console.error(`${this.prefix} ❌ ${message}`, error);
+        if (CONFIG.simplifyUI) {
+            rules.push(hide([
+                'ytd-watch-flexy #related',
+                '.ytp-fullscreen-grid-active.html5-video-player.ended-mode .ytp-fullscreen-grid-main-content',
+                '#comment-teaser',
+                'ytd-horizontal-card-list-renderer[modern-chapters][card-list-style=HORIZONTAL_CARD_LIST_STYLE_TYPE_ENGAGEMENT_PANEL_SECTION]',
+                'ytd-video-description-infocards-section-renderer > #header',
+                'ytd-video-description-infocards-section-renderer > #action-buttons',
+                '#social-links.ytd-video-description-infocards-section-renderer',
+                '#secondary',
+                '#related',
+                'ytd-watch-next-secondary-results-renderer',
+                'ytd-mini-guide-renderer.ytd-app.style-scope',
+                '#buttons > ytd-button-renderer.ytd-masthead.style-scope',
+                '#voice-search-button',
+                'img[src*="tia.png"]',
+                '#country-code'
+            ].join(',')));
+
+            rules.push(`
+            ytd-video-description-infocards-section-renderer { border-top: 0 !important; }
+            ytd-watch-metadata.ytd-watch-flexy { padding-bottom: 36px !important; }
+            ytd-watch-metadata.ytd-watch-flexy { padding-bottom: 36px !important; }
+            input.ytSearchboxComponentInput[name="search_query"]::placeholder {
+                color: transparent !important;
+            }
+        `);
+        }
+
+        if (CONFIG.removeComments) {
+            rules.push(hide([
+                '#comments.style-scope.ytd-watch-flexy',
+                'ytd-comments',
+                'ytd-comment-thread-renderer',
+                '#comment-teaser'
+            ].join(',')));
+        }
+
+        // ===== PLAYER SKELETONS =====
+        rules.push(hide([
+            '.ytd-ghost-grid-renderer',
+            '.info-skeleton',
+            '.meta-skeleton',
+            '#ghost-cards',
+            '#ghost-comment-section',
+            '#related-skeleton'
+        ].join(',')));
+
+        if (CONFIG.disablePlayerGradients) {
+            rules.push('.ytp-gradient-top,.ytp-gradient-bottom{height:0!important;padding:0!important;}');
+        }
+
+        if (CONFIG.disablePlayerWatermarkAndAnnotations) {
+            rules.push(hide('.ytp-watermark,.annotation,.iv-branding,.video-annotations'));
+        }
+
+        if (CONFIG.disableBlurEffects) {
+            rules.push(`
+            ytm-mobile-topbar-renderer.frosted-glass,
+            ytm-pivot-bar-renderer.frosted-glass,
+            ytm-feed-filter-chip-bar-renderer.frosted-glass,
+            #background.ytd-masthead, #frosted-glass.ytd-app {
+                background: var(--yt-spec-base-background) !important;
+                backdrop-filter: none !important;
+                -webkit-backdrop-filter: none !important;
+            }
+        `);
+        }
+
+        if (CONFIG.disableShadows) {
+            rules.push('ytd-app *{box-shadow:none!important;text-shadow:none!important;}');
+        }
+
+        if (CONFIG.disableNotifications) {
+            rules.push(hide('ytd-notification-topbar-button-renderer.ytd-masthead.style-scope'));
+        }
+
+        // ===== SIDEBAR PROMO =====
+        rules.push(`
+        ytd-guide-entry-renderer > a[href*="/feed/courses_destination"],
+        ytd-guide-entry-renderer > a[href*="/podcasts"],
+        ytd-guide-entry-renderer > a[href*="/feed/podcasts"] {
+            display: ${CONFIG.removePromo ? 'none' : 'block'} !important;
+        }
+        #footer.style-scope.ytd-guide-renderer { display: ${CONFIG.removePromo ? 'none' : 'block'} !important; }
+        ytd-guide-entry-renderer[title*="Premium"] { display: ${CONFIG.removePromo ? 'none' : 'flex'} !important; }
+        ytd-guide-entry-renderer[title*="YouTube Music"] { display: ${CONFIG.removePromo ? 'none' : 'flex'} !important; }
+    `);
+
+        // ===== EXTRA REMOVALS =====
+        if (CONFIG.removePromo) {
+            rules.push(hide('ytd-merch-shelf-renderer'));
+        }
+        if (CONFIG.removeInfoAndPlayerCards) {
+            rules.push(hide('ytd-video-description-infocards-section-renderer,.ytp-ce-element,.ytp-cards-teaser'));
+        }
+        if (CONFIG.removeEndScreen) {
+            rules.push(hide('.html5-endscreen,.ytp-endscreen-content'));
+        }
+        if (CONFIG.removeLiveChat) {
+            rules.push(hide('ytd-live-chat-frame,#chat,#live-chat-iframe'));
+        }
+        if (CONFIG.removeTrending) {
+            rules.push(hide('a[href*="/feed/trending"],ytd-guide-entry-renderer[title*="Trending"]'));
+        }
+
+        // ===== INJECT / UPDATE STYLE =====
+        const style = document.getElementById('yt-optimizer-advanced-css') || (() => {
+            const s = document.createElement('style');
+            s.id = 'yt-optimizer-advanced-css';
+            document.head.appendChild(s);
+            return s;
+        })();
+
+        const newCSS = rules.join('\n');
+        if (style.textContent !== newCSS) {
+            style.textContent = newCSS;
         }
     }
 
-    // Безопасное выполнение с обработкой ошибок
-    function safeExecute(fn, name) {
-        try {
-            return fn();
-        } catch (error) {
-            Logger.error(`Error in ${name}:`, error);
+    // ============================================================================
+    // ANIMATION DISABLER
+    // ============================================================================
+    const ANIMATIONS_CSS = `
+    /* Disable most UI animations & transitions */
+    html {
+        scroll-behavior: auto !important;
+    }
+
+    ytd-app *,
+        ytm-app *,
+            #content *,
+                #page-manager * {
+                    animation: none !important;
+                    transition: none !important;
+                }
+
+    /* Keep player stable */
+    video,
+        ytd-player,
+        .html5-video-player,
+            #movie_player {
+                animation: initial !important;
+                transition: initial !important;
+            }
+
+    /* Allow minimal button feedback */
+    ytd-button-renderer,
+        yt-icon-button,
+        button,
+        [role="button"] {
+            transition: opacity 0.1s !important;
+        }
+    `;
+
+    function disableAnimations() {
+        if (!CONFIG.disableAnimations) {
+            return;
+        }
+
+        let style = document.getElementById('yt-optimizer-animations');
+        if (!style) {
+            style = document.createElement('style');
+            style.id = 'yt-optimizer-animations';
+            document.head.appendChild(style);
+        }
+
+        if (style.textContent !== ANIMATIONS_CSS) {
+            style.textContent = ANIMATIONS_CSS;
+        }
+    }
+
+    // ============================================================================
+    // MEMORY LEAK FIX
+    // ============================================================================
+    let __memoryLeakFixApplied = false;
+
+    const _PromiseCtor = (async () => {}).constructor;
+    const ytDOMWM = new WeakMap();
+
+    const insp = (o) => (o && (o.polymerController || o.inst || o)) || 0;
+
+    function getThumbnail(thumbnails) {
+        if (!thumbnails || !thumbnails.length) {
             return null;
         }
+
+        let best = null;
+        let bestScore = 0;
+
+        for (let i = 0; i < thumbnails.length; i++) {
+            const t = thumbnails[i];
+            const score = (t.width || 0) * (t.height || 0);
+            if (score > bestScore) {
+                bestScore = score;
+                best = t;
+            }
+        }
+
+        return best;
+    }
+
+    function applyMemoryLeakFix() {
+        if (!CONFIG.memoryLeakFix) return;
+        if (__memoryLeakFixApplied) return;
+
+        __memoryLeakFixApplied = true;
+
+        try {
+            Object.defineProperty(Element.prototype, 'usePatchedLifecycles', {
+                get() {
+                    const val = ytDOMWM.get(this);
+
+                    if (val === undefined) return true;
+
+                    if (val === 0) return false;
+
+                    if (val && !this.isConnected && !this.classList.contains('style-scope')) {
+                        return false;
+                    }
+
+                    return val;
+                },
+
+                set(nv) {
+                    let control = false;
+                    const nodeName = (this.nodeName || '').toLowerCase();
+
+                    switch (nodeName) {
+                        case 'yt-attributed-string':
+                        case 'yt-image':
+                            control = !(this.classList && this.classList.length > 0);
+                            break;
+
+                        case 'yt-player-seek-continuation':
+                        case 'yt-payments-manager':
+                        case 'yt-visibility-monitor':
+                        case 'yt-live-chat-replay-continuation':
+                        case 'yt-reload-continuation':
+                        case 'yt-timed-continuation':
+                            control = true;
+                            break;
+
+                        case 'yt-img-shadow':
+                            if (nv && CONFIG.optimizeThumbnails) {
+                                const cnt = insp(this);
+                                const thumb = getThumbnail(cnt?.__data?.thumbnail?.thumbnails);
+                                const url0 = thumb?.url;
+
+                                if (url0 && url0.length > 17) {
+                                    control = true;
+
+                                    _PromiseCtor.resolve(0).then(() => {
+                                        const t2 = getThumbnail(cnt?.__data?.thumbnail?.thumbnails);
+                                        const url = t2?.url || url0;
+                                        if (cnt?.$.img) {
+                                            cnt.$.img.src = `${url}`;
+                                        }
+                                    });
+                                }
+                            }
+                            break;
+                    }
+
+                    if (control) {
+                        nv = 0;
+                    }
+
+                    ytDOMWM.set(this, nv);
+                    return true;
+                },
+
+                enumerable: false,
+                configurable: true
+            });
+        } catch (e) {}
     }
 
     // ============================================================================
-    // SETTINGS UI (УПРОЩЕННАЯ ВЕРСИЯ)
+    // NOTIFICATION TITLE CLEANER
+    // ============================================================================
+    let __ytTitlePatched = false;
+
+    function cleanNotificationTitles() {
+        if (!CONFIG.disableNotifications) {
+            return;
+        }
+
+        if (__ytTitlePatched) {
+            return;
+        }
+        __ytTitlePatched = true;
+
+        const desc = Object.getOwnPropertyDescriptor(Document.prototype, 'title');
+        if (!desc || !desc.set || !desc.get) {
+            return;
+        }
+
+        Object.defineProperty(Document.prototype, 'title', {
+            get() {
+                return desc.get.call(this);
+            },
+            set(newValue) {
+                const cleaned = ('' + newValue)
+                    .replace(/^\(\d+\)\s*/, '');
+                return desc.set.call(this, cleaned);
+            },
+            configurable: true,
+            enumerable: true
+        });
+    }
+
+    // ============================================================================
+    // TRAILER AUTOPLAY DISABLER
+    // ============================================================================
+    let __trailerAutoplayHooked = false;
+
+    function disableTrailerAutoplay() {
+        if (!CONFIG.disableAutoplay) {
+            return;
+        }
+
+        if (__trailerAutoplayHooked) {
+            return;
+        }
+        __trailerAutoplayHooked = true;
+
+        const handler = (e) => {
+            const video = e.target;
+            if (!(video instanceof HTMLVideoElement)) {
+                return;
+            }
+
+            const channel = document.querySelector('ytd-channel-video-player-renderer');
+            if (channel && channel.contains(video)) {
+                video.autoplay = false;
+                video.pause();
+            }
+        };
+
+        document.addEventListener('play', handler, true);
+    }
+
+    // ============================================================================
+    // PREVENT AUTO-PAUSE WHEN TAB INACTIVE
+    // ============================================================================
+    let __preventAutoPauseHooked = false;
+
+    function preventAutoPause() {
+        if (__preventAutoPauseHooked) {
+            return;
+        }
+        __preventAutoPauseHooked = true;
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                const video = document.querySelector('video');
+                if (video && video.paused === false) {
+                    video.play()
+                        .catch(() => {});
+                }
+            }
+        });
+    }
+
+    // ============================================================================
+    // URL PARAMETER CLEANER
+    // ============================================================================
+    let __urlCleanerHooked = false;
+
+    function cleanUrlParameters() {
+        if (__urlCleanerHooked) {
+            return;
+        }
+        __urlCleanerHooked = true;
+
+        const events = [
+            'yt-navigate',
+            'yt-navigate-start',
+            'yt-page-type-changed',
+            'yt-player-updated',
+            'yt-page-data-fetched',
+            'yt-navigate-finish'
+        ];
+
+        const clean = () => {
+            if (!location.search.includes('pp=')) {
+                return;
+            }
+
+            const newSearch = location.search.replace(/([?&])pp=[^=&?]+\b(&|)/, (a, p, q) => {
+                return q ? p : '';
+            });
+
+            const newUrl = location.pathname + newSearch + location.hash;
+            history.replaceState(history.state, '', newUrl);
+        };
+
+        const handler = () => {
+            clean();
+            Promise.resolve()
+                .then(clean);
+        };
+
+        for (let i = 0; i < events.length; i++) {
+            document.addEventListener(events[i], handler, false);
+        }
+    }
+
+    // ============================================================================
+    // TIMER OPTIMIZER
+    // ============================================================================
+    let __timersPatched = false;
+
+    function optimizeTimers() {
+        if (!CONFIG.throttleTimers) return;
+        if (__timersPatched) return;
+        __timersPatched = true;
+
+        const originalSetTimeout = window.setTimeout;
+        const originalSetInterval = window.setInterval;
+        const originalClearTimeout = window.clearTimeout;
+        const originalClearInterval = window.clearInterval;
+
+        const activeTasks = new Map();
+
+        function now() {
+            return performance.now();
+        }
+
+        function wrapTimer(originalFn, minDelay, hardMinDelay) {
+            return function (callback, delay, ...args) {
+
+                if (typeof callback !== 'function' || typeof delay !== 'number' || delay < minDelay) {
+                    return originalFn(callback, delay, ...args);
+                }
+
+                const finalDelay = delay < hardMinDelay ? hardMinDelay : delay;
+
+                const task = {
+                    cb: callback,
+                    args,
+                    lastRun: 0,
+                    cancelled: false
+                };
+
+                const id = originalFn(function tick() {
+                    if (task.cancelled) return;
+
+                    const t = now();
+
+                    if (t - task.lastRun >= finalDelay - 5) {
+                        task.lastRun = t;
+                        try {
+                            task.cb(...task.args);
+                        } catch (e) {
+                            console.error(e);
+                        }
+                    }
+                }, finalDelay);
+
+                activeTasks.set(id, task);
+                return id;
+            };
+        }
+
+        window.setInterval = wrapTimer(originalSetInterval, 1000, 2000);
+        window.setTimeout = wrapTimer(originalSetTimeout, 200, 1000);
+
+        window.clearInterval = function (id) {
+            const task = activeTasks.get(id);
+            if (task) {
+                task.cancelled = true;
+                activeTasks.delete(id);
+            }
+            return originalClearInterval(id);
+        };
+
+        window.clearTimeout = function (id) {
+            const task = activeTasks.get(id);
+            if (task) {
+                task.cancelled = true;
+                activeTasks.delete(id);
+            }
+            return originalClearTimeout(id);
+        };
+
+        try {
+            window.setTimeout.toString = originalSetTimeout.toString.bind(originalSetTimeout);
+            window.setInterval.toString = originalSetInterval.toString.bind(originalSetInterval);
+            window.clearTimeout.toString = originalClearTimeout.toString.bind(originalClearTimeout);
+            window.clearInterval.toString = originalClearInterval.toString.bind(originalClearInterval);
+        } catch (e) {}
+    }
+
+    // ============================================================================
+    // UI CLEANER
+    // ============================================================================
+
+    const BASE_HIDE_SELECTORS = {
+        shorts: [
+            '[is-shorts]',
+            'ytd-reel-shelf-renderer',
+            'ytd-reel-item-renderer',
+            'a[href*="/shorts/"]'
+        ],
+        ads: [
+            'ytd-display-ad-renderer',
+            '.ytp-ad-module',
+            '.video-ads'
+        ],
+        sidebar: [
+            '#secondary',
+            '#related',
+            'ytd-watch-next-secondary-results-renderer'
+        ],
+        comments: [
+            '#comments',
+            'ytd-comments'
+        ]
+    };
+
+    let __uiCleanerInitialized = false;
+
+    function cleanUI() {
+        if (!CONFIG.simplifyUI) return;
+        if (__uiCleanerInitialized) return;
+        __uiCleanerInitialized = true;
+
+        let debounceTimer = null;
+        let observer = null;
+        let mutationCount = 0;
+
+        const MAX_MUTATIONS = 2000;
+        const DEBOUNCE_DELAY = 250;
+
+        let combinedSelector = '';
+
+        function rebuildSelector() {
+            const parts = [];
+
+            if (CONFIG.removeShorts) parts.push(...BASE_HIDE_SELECTORS.shorts);
+            if (CONFIG.removeAds) parts.push(...BASE_HIDE_SELECTORS.ads);
+            if (CONFIG.simplifyUI) parts.push(...BASE_HIDE_SELECTORS.sidebar);
+            if (CONFIG.removeComments) parts.push(...BASE_HIDE_SELECTORS.comments);
+
+            combinedSelector = parts.join(',');
+        }
+
+        function hideElements() {
+            if (!document.body || !combinedSelector) return 0;
+
+            let nodes;
+            try {
+                nodes = document.querySelectorAll(combinedSelector);
+            } catch {
+                return 0;
+            }
+
+            let hiddenCount = 0;
+
+            for (let i = 0; i < nodes.length; i++) {
+                const el = nodes[i];
+                if (!el || el.__ytOptimizerHidden) continue;
+
+                el.style.display = 'none';
+                el.__ytOptimizerHidden = true;
+                hiddenCount++;
+            }
+
+            return hiddenCount;
+        }
+
+        function scheduleCleanup(delay = DEBOUNCE_DELAY) {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(hideElements, delay);
+        }
+
+        observer = new MutationObserver((mutations) => {
+            mutationCount++;
+            if (mutationCount > MAX_MUTATIONS) {
+                observer.disconnect();
+                return;
+            }
+
+            for (const m of mutations) {
+                if (m.type === 'childList' && m.addedNodes.length) {
+                    scheduleCleanup();
+                    break;
+                }
+            }
+        });
+
+        function startObserver() {
+            if (!document.body) return;
+            observer.observe(document.body, { childList: true, subtree: true });
+        }
+
+        let navDebounce = null;
+
+        function onSPANavigation() {
+            mutationCount = 0;
+            rebuildSelector();
+            if (navDebounce) clearTimeout(navDebounce);
+            navDebounce = setTimeout(hideElements, 400);
+        }
+
+        document.addEventListener('yt-navigate-finish', onSPANavigation);
+        document.addEventListener('yt-page-data-fetched', onSPANavigation);
+
+        function cleanup() {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            if (navDebounce) clearTimeout(navDebounce);
+            if (observer) observer.disconnect();
+
+            document.removeEventListener('yt-navigate-finish', onSPANavigation);
+            document.removeEventListener('yt-page-data-fetched', onSPANavigation);
+        }
+
+        window.addEventListener('beforeunload', cleanup);
+        window.addEventListener('pagehide', cleanup);
+
+        function runInitial() {
+            setTimeout(hideElements, 500);
+        }
+
+        rebuildSelector();
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', runInitial, { once: true });
+        } else {
+            runInitial();
+        }
+
+        startObserver();
+
+        window.__ytOptimizerCleanupUI = cleanup;
+    }
+
+    // ============================================================================
+    // VIDEO QUALITY LIMITER
+    // ============================================================================
+    let __qualityLimiterInitialized = false;
+
+    function setupQualityLimiter() {
+        if (!CONFIG.limitVideoQuality) return;
+        if (__qualityLimiterInitialized) return;
+        __qualityLimiterInitialized = true;
+
+        const qualityMap = {
+            '144p': 'tiny',
+            '240p': 'small',
+            '360p': 'medium',
+            '480p': 'large',
+            '720p': 'hd720',
+            '1080p': 'hd1080',
+            '1440p': 'hd1440',
+            '2160p': 'hd2160',
+            '4320p': 'hd4320'
+        };
+
+        const targetQuality = qualityMap[CONFIG.maxQuality];
+        if (!targetQuality) return;
+
+        function tryApplyQuality() {
+            const player = document.getElementById('movie_player') ||
+                document.querySelector('.html5-video-player');
+
+            if (!player) return false;
+
+            try {
+                if (typeof player.setPlaybackQualityRange === 'function') {
+                    player.setPlaybackQualityRange(targetQuality, targetQuality);
+                }
+                if (typeof player.setPlaybackQuality === 'function') {
+                    player.setPlaybackQuality(targetQuality);
+                }
+                return true;
+            } catch {
+                return false;
+            }
+        }
+
+        const observer = new MutationObserver(() => {
+            if (tryApplyQuality()) {}
+        });
+
+        function start() {
+            tryApplyQuality();
+            if (document.body) {
+                observer.observe(document.body, { childList: true, subtree: true });
+            }
+        }
+
+        start();
+
+        document.addEventListener('yt-navigate-finish', () => {
+            tryApplyQuality();
+        });
+    }
+
+    // ============================================================================
+    // PLAYER OPTIMIZER (CLEAN)
+    // ============================================================================
+    function optimizePlayer() {
+
+        // ------------------------------------------------------------------------
+        // Disable autoplay
+        // ------------------------------------------------------------------------
+        let __autoplayDisablerInitialized = false;
+
+        function setupAutoplayDisabler() {
+            if (!CONFIG.disableAutoplay) return;
+            if (__autoplayDisablerInitialized) return;
+            __autoplayDisablerInitialized = true;
+
+            function tryDisableAutoplay() {
+                const btn = document.querySelector('.ytp-autonav-toggle-button');
+                if (!btn) return false;
+
+                if (btn.getAttribute('aria-checked') === 'true') {
+                    btn.click();
+                }
+                return true;
+            }
+
+            const observer = new MutationObserver(() => {
+                tryDisableAutoplay();
+            });
+
+            function start() {
+                tryDisableAutoplay();
+                if (document.body) {
+                    observer.observe(document.body, { childList: true, subtree: true });
+                }
+            }
+
+            start();
+
+            document.addEventListener('yt-navigate-finish', () => {
+                tryDisableAutoplay();
+            });
+        }
+
+        // ------------------------------------------------------------------------
+        // Video quality limiter
+        // ------------------------------------------------------------------------
+        if (CONFIG.limitVideoQuality) {
+            setupQualityLimiter();
+        }
+    }
+
+    // ============================================================================
+    // LAZY LOADING
+    // ============================================================================
+    function optimizeLazyLoading() {
+        if (!CONFIG.lazyLoadImages) return;
+
+        if (window.__ytOptimizerLazyInit) return;
+        window.__ytOptimizerLazyInit = true;
+
+        const io = new IntersectionObserver((entries) => {
+            for (let i = 0; i < entries.length; i++) {
+                const entry = entries[i];
+                if (!entry.isIntersecting) continue;
+
+                const img = entry.target;
+                const src = img.getAttribute('data-src');
+                if (src) {
+                    img.src = src;
+                    img.removeAttribute('data-src');
+                }
+                io.unobserve(img);
+            }
+        }, {
+            rootMargin: '200px',
+            threshold: 0.01
+        });
+
+        function observeImage(img) {
+            if (!img || img.__ytOptimizerObserved) return;
+            if (!img.hasAttribute('data-src')) return;
+
+            img.__ytOptimizerObserved = true;
+            io.observe(img);
+        }
+
+        const initial = document.querySelectorAll('img[data-src]');
+        for (let i = 0; i < initial.length; i++) {
+            observeImage(initial[i]);
+        }
+
+        const mo = new MutationObserver((mutations) => {
+            for (let i = 0; i < mutations.length; i++) {
+                const m = mutations[i];
+                if (m.type !== 'childList' || m.addedNodes.length === 0) continue;
+
+                for (let j = 0; j < m.addedNodes.length; j++) {
+                    const node = m.addedNodes[j];
+                    if (node.nodeType !== 1) continue;
+
+                    if (node.tagName === 'IMG') {
+                        observeImage(node);
+                    } else {
+                        const imgs = node.querySelectorAll && node.querySelectorAll('img[data-src]');
+                        if (imgs && imgs.length) {
+                            for (let k = 0; k < imgs.length; k++) {
+                                observeImage(imgs[k]);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (document.body) {
+            mo.observe(document.body, { childList: true, subtree: true });
+        }
+    }
+
+    // ============================================================================
+    // SETTINGS UI
     // ============================================================================
     class SettingsUI {
         constructor() {
@@ -115,901 +1060,401 @@
             this.overlay = null;
             this.settingsButton = null;
             this.isFullscreen = false;
+            this.applyTimeout = null;
+
+            this.cachedElements = new Map();
+            this.activeTab = '⚡ Производительность';
+
+            this.handleEscapeKey = this.handleEscapeKey.bind(this);
+            this.handleOverlayClick = this.handleOverlayClick.bind(this);
+
             this.initialize();
         }
 
-        initialize() {
-            // Создаем кнопку настроек если включено
-            if (CONFIG.showSettingsButton) {
-                this.createSettingsButton();
+        injectStyles() {
+            const styles = `
+            .ytoo-modal-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.7);
+                z-index: 9998;
+                backdrop-filter: blur(4px);
+                opacity: 0;
+                transition: opacity 0.3s ease;
             }
 
-            // Регистрируем команду в меню Tampermonkey
-            try {
-                GM_registerMenuCommand('⚙ Open YouTube Optimizer Settings', () => this.open());
-            } catch (e) {
-                Logger.log('GM_registerMenuCommand not available');
+            .ytoo-modal {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%) scale(0.9);
+                background: #0f0f0f;
+                color: white;
+                border-radius: 16px;
+                padding: 24px;
+                width: 90%;
+                max-width: 600px;
+                height: 850px;
+                overflow-y: auto;
+                z-index: 9999;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+                opacity: 0;
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+                font-size: 16px;
+                line-height: 1.5;
             }
 
-            // Добавляем обработчики для полноэкранного режима
-            this.setupFullscreenHandlers();
-        }
-
-        setupFullscreenHandlers() {
-            // Слушаем события полноэкранного режима
-            document.addEventListener('fullscreenchange', () => {
-                this.checkFullscreen();
-            });
-
-            document.addEventListener('webkitfullscreenchange', () => {
-                this.checkFullscreen();
-            });
-
-            document.addEventListener('mozfullscreenchange', () => {
-                this.checkFullscreen();
-            });
-
-            document.addEventListener('MSFullscreenChange', () => {
-                this.checkFullscreen();
-            });
-
-            // Также слушаем события YouTube плеера
-            document.addEventListener('yt-fullscreen-change', (e) => {
-                this.isFullscreen = e.detail.isFullscreen;
-                this.updateButtonVisibility();
-            });
-
-            // Периодически проверяем состояние
-            setInterval(() => {
-                this.checkFullscreen();
-            }, 1000);
-        }
-
-        checkFullscreen() {
-            const isFullscreen = !!(
-                document.fullscreenElement ||
-                document.webkitFullscreenElement ||
-                document.mozFullScreenElement ||
-                document.msFullscreenElement ||
-                document.querySelector('.html5-video-player[fullscreen]') ||
-                document.querySelector('.html5-video-player.ytp-fullscreen')
-            );
-
-            if (this.isFullscreen !== isFullscreen) {
-                this.isFullscreen = isFullscreen;
-                this.updateButtonVisibility();
-            }
-        }
-
-        updateButtonVisibility() {
-            if (!this.settingsButton) return;
-
-            if (this.isFullscreen) {
-                this.settingsButton.style.display = 'none';
-                Logger.log('Settings button hidden (fullscreen mode)');
-            } else {
-                this.settingsButton.style.display = 'flex';
-                Logger.log('Settings button shown (normal mode)');
-            }
-        }
-
-        createSettingsButton() {
-            this.settingsButton = document.createElement('button');
-            this.settingsButton.id = 'yt-optimizer-settings-btn';
-            this.settingsButton.textContent = '⚡';
-            this.settingsButton.title = 'Open YouTube Optimizer Settings';
-            this.settingsButton.setAttribute('aria-label', 'Open YouTube Optimizer Settings');
-
-            const buttonStyle = {
-                position: 'fixed',
-                bottom: '20px',
-                right: '20px',
-                zIndex: '10000',
-                width: '50px',
-                height: '50px',
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #ff0000, #cc0000)',
-                color: 'white',
-                border: '2px solid white',
-                fontSize: '24px',
-                cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                userSelect: 'none'
-            };
-
-            Object.assign(this.settingsButton.style, buttonStyle);
-
-            // Добавляем анимацию при наведении
-            this.settingsButton.addEventListener('mouseenter', () => {
-                if (!this.isFullscreen) {
-                    this.settingsButton.style.transform = 'scale(1.1) rotate(15deg)';
-                    this.settingsButton.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.4)';
-                }
-            });
-
-            this.settingsButton.addEventListener('mouseleave', () => {
-                if (!this.isFullscreen) {
-                    this.settingsButton.style.transform = 'scale(1) rotate(0deg)';
-                    this.settingsButton.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
-                }
-            });
-
-            this.settingsButton.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.open();
-            });
-
-            // Добавляем плавное появление
-            setTimeout(() => {
-                this.settingsButton.style.opacity = '0';
-                document.body.appendChild(this.settingsButton);
-                requestAnimationFrame(() => {
-                    this.settingsButton.style.transition = 'opacity 0.5s ease';
-                    this.settingsButton.style.opacity = '1';
-                });
-            }, 1000);
-        }
-
-        createModal() {
-            // Оверлей
-            this.overlay = document.createElement('div');
-            Object.assign(this.overlay.style, {
-                position: 'fixed',
-                top: '0',
-                left: '0',
-                right: '0',
-                bottom: '0',
-                background: 'rgba(0, 0, 0, 0.7)',
-                zIndex: '9998',
-                backdropFilter: 'blur(4px)',
-                opacity: '0',
-                transition: 'opacity 0.3s ease'
-            });
-
-            // Модальное окно
-            this.modal = document.createElement('div');
-            Object.assign(this.modal.style, {
-                position: 'fixed',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%) scale(0.9)',
-                background: '#0f0f0f',
-                color: 'white',
-                borderRadius: '16px',
-                padding: '24px',
-                width: '90%',
-                maxWidth: '600px',
-                maxHeight: '80vh',
-                overflowY: 'auto',
-                zIndex: '9999',
-                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
-                opacity: '0',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
-                fontSize: '16px',
-                lineHeight: '1.5'
-            });
-
-            // Закрытие при клике на оверлей
-            this.overlay.addEventListener('click', (e) => {
-                if (e.target === this.overlay) {
-                    this.close();
-                }
-            });
-
-            // Закрытие при нажатии Escape
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && this.isOpen) {
-                    this.close();
-                }
-            });
-        }
-
-        createSettingElement(setting) {
-            if (setting.type === 'select') {
-                const isDisabled = setting.disabled || false;
-
-                const container = document.createElement('div');
-                Object.assign(container.style, {
-                    marginBottom: '20px',
-                    opacity: isDisabled ? '0.5' : '1',
-                    padding: '16px',
-                    background: '#1a1a1a',
-                    borderRadius: '10px'
-                });
-
-                const label = document.createElement('label');
-                Object.assign(label.style, {
-                    display: 'block',
-                    marginBottom: '10px',
-                    fontWeight: '600',
-                    color: '#fff',
-                    fontSize: '16px'
-                });
-                label.textContent = setting.label;
-                label.htmlFor = `setting-${setting.key}`;
-
-                const select = document.createElement('select');
-                select.id = `setting-${setting.key}`;
-                Object.assign(select.style, {
-                    width: '100%',
-                    padding: '12px 16px',
-                    background: '#2a2a2a',
-                    color: 'white',
-                    border: '1px solid #444',
-                    borderRadius: '8px',
-                    fontSize: '16px',
-                    outline: 'none',
-                    transition: 'border-color 0.2s',
-                    cursor: 'pointer'
-                });
-
-                if (isDisabled) {
-                    select.disabled = true;
-                }
-
-                setting.options.forEach(opt => {
-                    const option = document.createElement('option');
-                    option.value = opt.value;
-                    option.textContent = opt.label;
-                    if (CONFIG[setting.key] === opt.value) {
-                        option.selected = true;
-                    }
-                    select.appendChild(option);
-                });
-
-                container.appendChild(label);
-                container.appendChild(select);
-
-                if (setting.description) {
-                    const description = document.createElement('div');
-                    Object.assign(description.style, {
-                        fontSize: '14px',
-                        color: '#aaa',
-                        marginTop: '8px',
-                        lineHeight: '1.4'
-                    });
-                    description.textContent = setting.description;
-                    container.appendChild(description);
-                }
-
-                return container;
-            } else {
-                const isChecked = CONFIG[setting.key];
-
-                const container = document.createElement('div');
-                Object.assign(container.style, {
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    marginBottom: '20px',
-                    padding: '16px',
-                    background: '#1a1a1a',
-                    borderRadius: '10px',
-                    transition: 'background 0.2s',
-                    border: '1px solid #2a2a2a'
-                });
-
-                const checkboxContainer = document.createElement('div');
-                Object.assign(checkboxContainer.style, {
-                    flexShrink: '0',
-                    marginRight: '16px'
-                });
-
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.id = `setting-${setting.key}`;
-                checkbox.checked = isChecked;
-                Object.assign(checkbox.style, {
-                    width: '22px',
-                    height: '22px',
-                    margin: '0',
-                    cursor: 'pointer',
-                    accentColor: '#ff0000'
-                });
-
-                checkboxContainer.appendChild(checkbox);
-
-                const contentContainer = document.createElement('div');
-                contentContainer.style.flexGrow = '1';
-
-                const label = document.createElement('label');
-                label.htmlFor = `setting-${setting.key}`;
-                Object.assign(label.style, {
-                    display: 'block',
-                    fontWeight: '600',
-                    color: '#fff',
-                    marginBottom: '6px',
-                    cursor: 'pointer',
-                    fontSize: '16px'
-                });
-                label.textContent = setting.label;
-
-                contentContainer.appendChild(label);
-
-                if (setting.description) {
-                    const description = document.createElement('div');
-                    Object.assign(description.style, {
-                        fontSize: '14px',
-                        color: '#aaa',
-                        lineHeight: '1.4'
-                    });
-                    description.textContent = setting.description;
-                    contentContainer.appendChild(description);
-                }
-
-                const statusContainer = document.createElement('div');
-                Object.assign(statusContainer.style, {
-                    flexShrink: '0',
-                    marginLeft: '16px'
-                });
-
-                const statusDot = document.createElement('span');
-                Object.assign(statusDot.style, {
-                    display: 'inline-block',
-                    width: '14px',
-                    height: '14px',
-                    borderRadius: '50%',
-                    background: isChecked ? '#4CAF50' : '#666'
-                });
-
-                statusContainer.appendChild(statusDot);
-
-                container.appendChild(checkboxContainer);
-                container.appendChild(contentContainer);
-                container.appendChild(statusContainer);
-
-                return container;
-            }
-        }
-
-        createModalContent() {
-            const fragment = document.createDocumentFragment();
-            const container = document.createElement('div');
-
-            // Заголовок
-            const titleContainer = document.createElement('div');
-            titleContainer.style.marginBottom = '24px';
-
-            const title = document.createElement('h2');
-            Object.assign(title.style, {
-                margin: '0 0 12px 0',
-                color: '#fff',
-                fontSize: '28px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px'
-            });
-
-            const iconSpan = document.createElement('span');
-            Object.assign(iconSpan.style, {
-                background: 'linear-gradient(135deg, #ff0000, #cc0000)',
-                width: '36px',
-                height: '36px',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-            });
-            iconSpan.textContent = '⚡';
-
-            const titleText = document.createTextNode(' Open YouTube Optimizer by @lag_cs');
-
-            title.appendChild(iconSpan);
-            title.appendChild(titleText);
-
-            const version = document.createElement('p');
-            Object.assign(version.style, {
-                margin: '0',
-                color: '#aaa',
-                fontSize: '16px'
-            });
-            version.textContent = 'Версия 1.2';
-
-            titleContainer.appendChild(title);
-            titleContainer.appendChild(version);
-
-            // Статистика
-            const appliedFeatures = Object.values(CONFIG).filter(v => v === true).length;
-            const statsContainer = document.createElement('div');
-            Object.assign(statsContainer.style, {
-                background: '#1a1a1a',
-                padding: '16px',
-                borderRadius: '10px',
-                marginBottom: '24px',
-                borderLeft: '4px solid #ff0000'
-            });
-
-            const statsRow = document.createElement('div');
-            Object.assign(statsRow.style, {
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-            });
-
-            const statsText = document.createElement('span');
-            Object.assign(statsText.style, {
-                fontWeight: '500',
-                fontSize: '16px'
-            });
-
-            const appliedSpan = document.createElement('strong');
-            appliedSpan.style.color = '#4CAF50';
-            appliedSpan.textContent = appliedFeatures.toString();
-
-            statsText.appendChild(document.createTextNode('Применено оптимизаций: '));
-            statsText.appendChild(appliedSpan);
-
-            statsRow.appendChild(statsText);
-            statsContainer.appendChild(statsRow);
-
-            container.appendChild(titleContainer);
-            container.appendChild(statsContainer);
-
-            // Категории настроек
-            const categories = {
-                'Основные настройки': [
-                    { key: 'disableAnimations', label: 'Отключить анимации', description: 'Убирает CSS-анимации и переходы' },
-                    { key: 'throttleTimers', label: 'Оптимизировать таймеры', description: 'Замедляет фоновые таймеры для экономии ресурсов' },
-                    { key: 'removeJunkUI', label: 'Удалить лишние элементы', description: 'Удаляет ненужные элементы интерфейса' },
-                ],
-                'Оптимизация контента': [
-                    { key: 'removeShorts', label: 'Удалить Shorts', description: 'Скрывает все Shorts с главной страницы и рекомендаций' },
-                    { key: 'removeComments', label: 'Удалить комментарии', description: 'Скрывает раздел комментариев' },
-                    { key: 'simplifyUI', label: 'Упрощенный интерфейс', description: 'Убирает боковую панель и рекомендации' },
-                    { key: 'disableAutoplay', label: 'Отключить автозапуск', description: 'Отключает автовоспроизведение следующего видео' },
-                ],
-                'Качество видео': [
-                    {
-                        key: 'limitVideoQuality',
-                        label: 'Ограничить качество видео',
-                        description: 'Автоматически устанавливает максимальное качество'
-                    },
-                    {
-                        type: 'select',
-                        key: 'maxQuality',
-                        label: 'Максимальное качество',
-                        options: [
-                            { value: '360p', label: '360p' },
-                            { value: '480p', label: '480p' },
-                            { value: '720p', label: '720p (HD)' },
-                            { value: '1080p', label: '1080p (Full HD)' },
-                            { value: '1440p', label: '1440p (2K)' },
-                            { value: '2160p', label: '2160p (4K)' }
-                        ],
-                        disabled: !CONFIG.limitVideoQuality
-                    }
-                ],
-                'Экспериментальные': [
-                    { key: 'lazyLoadImages', label: 'Ленивая загрузка', description: 'Оптимизирует загрузку изображений (экспериментально)' },
-                ],
-                'Интерфейс': [
-                    { key: 'showSettingsButton', label: 'Показывать кнопку настроек', description: 'Показывать плавающую кнопку настроек' }
-                ]
-            };
-
-            // Добавляем все категории
-            Object.entries(categories).forEach(([categoryName, settings]) => {
-                const categoryDiv = document.createElement('div');
-                categoryDiv.style.marginBottom = '28px';
-
-                const categoryTitle = document.createElement('h3');
-                Object.assign(categoryTitle.style, {
-                    margin: '0 0 16px 0',
-                    color: '#fff',
-                    fontSize: '20px',
-                    paddingBottom: '10px',
-                    borderBottom: '2px solid #333',
-                    fontWeight: '600'
-                });
-                categoryTitle.textContent = categoryName;
-
-                categoryDiv.appendChild(categoryTitle);
-
-                // Добавляем настройки категории
-                settings.forEach(setting => {
-                    const settingElement = this.createSettingElement(setting);
-                    categoryDiv.appendChild(settingElement);
-                });
-
-                container.appendChild(categoryDiv);
-            });
-
-            // Кнопки действий
-            const actionsDiv = document.createElement('div');
-            Object.assign(actionsDiv.style, {
-                display: 'flex',
-                gap: '16px',
-                marginTop: '32px',
-                paddingTop: '24px',
-                borderTop: '2px solid #333'
-            });
-
-            // Кнопка Применить
-            const applyBtn = document.createElement('button');
-            applyBtn.id = 'yt-optimizer-apply';
-            Object.assign(applyBtn.style, {
-                flex: '1',
-                padding: '16px 24px',
-                background: 'linear-gradient(135deg, #ff0000, #cc0000)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '12px',
-                fontSize: '18px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '12px'
-            });
-
-            const applyIcon = document.createElement('span');
-            // Безопасный SVG без innerHTML
-            const applySvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            applySvg.setAttribute('width', '20');
-            applySvg.setAttribute('height', '20');
-            applySvg.setAttribute('viewBox', '0 0 24 24');
-            applySvg.setAttribute('fill', 'none');
-            applySvg.setAttribute('stroke', 'currentColor');
-            applySvg.setAttribute('stroke-width', '2');
-
-            const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            path1.setAttribute('d', 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z');
-            const polyline1 = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-            polyline1.setAttribute('points', '17 21 17 13 7 13 7 21');
-            const polyline2 = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-            polyline2.setAttribute('points', '7 3 7 8 15 8');
-
-            applySvg.appendChild(path1);
-            applySvg.appendChild(polyline1);
-            applySvg.appendChild(polyline2);
-            applyIcon.appendChild(applySvg);
-
-            applyBtn.appendChild(applyIcon);
-            applyBtn.appendChild(document.createTextNode(' Применить и перезагрузить'));
-
-            // Кнопка Сбросить
-            const resetBtn = document.createElement('button');
-            resetBtn.id = 'yt-optimizer-reset';
-            Object.assign(resetBtn.style, {
-                padding: '16px 24px',
-                background: '#333',
-                color: 'white',
-                border: 'none',
-                borderRadius: '12px',
-                fontSize: '16px',
-                cursor: 'pointer',
-                transition: 'background 0.2s',
-                fontWeight: '500'
-            });
-            resetBtn.textContent = 'Сбросить';
-
-            actionsDiv.appendChild(applyBtn);
-            actionsDiv.appendChild(resetBtn);
-            container.appendChild(actionsDiv);
-
-            // Предупреждение
-            const warningDiv = document.createElement('div');
-            Object.assign(warningDiv.style, {
-                marginTop: '20px',
-                fontSize: '14px',
-                color: '#666',
-                textAlign: 'center',
-                padding: '12px',
-                background: '#1a1a1a',
-                borderRadius: '8px'
-            });
-            warningDiv.textContent = '⚠ Изменения вступят в силу после перезагрузки страницы';
-
-            container.appendChild(warningDiv);
-            fragment.appendChild(container);
-
-            return fragment;
-        }
-
-        open() {
-            if (this.isOpen) return;
-
-            this.createModal();
-
-            // Очищаем и добавляем новое содержимое
-            while (this.modal.firstChild) {
-                this.modal.removeChild(this.modal.firstChild);
+            .ytoo-modal-content {
+                height: 100%;
+                display: flex;
+                flex-direction: column;
             }
 
-            const content = this.createModalContent();
-            this.modal.appendChild(content);
-
-            document.body.appendChild(this.overlay);
-            document.body.appendChild(this.modal);
-
-            // Анимация появления
-            requestAnimationFrame(() => {
-                this.overlay.style.opacity = '1';
-                this.modal.style.opacity = '1';
-                this.modal.style.transform = 'translate(-50%, -50%) scale(1)';
-            });
-
-            this.isOpen = true;
-            this.addEventListeners();
-        }
-
-        addEventListeners() {
-            // Обработка всех элементов настроек
-            Object.keys(CONFIG).forEach(key => {
-                const element = document.getElementById(`setting-${key}`);
-                if (!element) return;
-
-                if (element.type === 'checkbox') {
-                    element.addEventListener('change', (e) => {
-                        CONFIG[key] = e.target.checked;
-
-                        // Особый случай для limitVideoQuality
-                        if (key === 'limitVideoQuality') {
-                            const qualitySelect = document.getElementById('setting-maxQuality');
-                            if (qualitySelect) {
-                                qualitySelect.disabled = !e.target.checked;
-                                qualitySelect.style.opacity = e.target.checked ? '1' : '0.5';
-                            }
-                        }
-
-                        // Особый случай для showSettingsButton
-                        if (key === 'showSettingsButton') {
-                            if (e.target.checked) {
-                                if (!this.settingsButton) {
-                                    this.createSettingsButton();
-                                } else {
-                                    this.settingsButton.style.display = 'flex';
-                                }
-                            } else if (this.settingsButton) {
-                                this.settingsButton.style.display = 'none';
-                            }
-                        }
-
-                        // Обновляем статус точки
-                        const statusDot = element.closest('div[style*="display: flex"]')?.querySelector('span[style*="border-radius: 50%"]');
-                        if (statusDot) {
-                            statusDot.style.background = e.target.checked ? '#4CAF50' : '#666';
-                        }
-                    });
-                } else if (element.tagName === 'SELECT') {
-                    element.addEventListener('change', (e) => {
-                        CONFIG[key] = e.target.value;
-                    });
-                }
-            });
-
-            // Кнопка применения
-            const applyBtn = document.getElementById('yt-optimizer-apply');
-            if (applyBtn) {
-                applyBtn.addEventListener('mouseenter', () => {
-                    applyBtn.style.transform = 'translateY(-2px)';
-                    applyBtn.style.boxShadow = '0 8px 20px rgba(255, 0, 0, 0.3)';
-                });
-
-                applyBtn.addEventListener('mouseleave', () => {
-                    applyBtn.style.transform = 'translateY(0)';
-                    applyBtn.style.boxShadow = 'none';
-                });
-
-                applyBtn.addEventListener('click', () => this.applySettings());
+            .ytoo-header {
+                margin-bottom: 24px;
+                flex-shrink: 0;
             }
 
-            // Кнопка сброса
-            const resetBtn = document.getElementById('yt-optimizer-reset');
-            if (resetBtn) {
-                resetBtn.addEventListener('click', () => {
-                    if (confirm('Сбросить все настройки к значениям по умолчанию?')) {
-                        CONFIG = { ...DEFAULT_CONFIG };
-                        this.rebuildModal();
-                    }
-                });
+            .ytoo-title {
+                margin: 0 0 12px 0;
+                color: #fff;
+                font-size: 28px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
             }
 
-            // Закрытие при клике вне модального окна
-            if (this.overlay) {
-                this.overlay.addEventListener('click', (e) => {
-                    if (e.target === this.overlay) {
-                        this.close();
-                    }
-                });
-            }
-        }
-
-        rebuildModal() {
-            if (!this.isOpen) return;
-
-            // Сохраняем позицию прокрутки
-            const scrollTop = this.modal.scrollTop;
-
-            // Очищаем содержимое
-            while (this.modal.firstChild) {
-                this.modal.removeChild(this.modal.firstChild);
+            .ytoo-title-icon {
+                background: linear-gradient(135deg, #ff0000, #cc0000);
+                width: 36px;
+                height: 36px;
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
             }
 
-            // Создаем новое содержимое
-            const content = this.createModalContent();
-            this.modal.appendChild(content);
-            this.addEventListeners();
-
-            // Восстанавливаем позицию прокрутки
-            setTimeout(() => {
-                this.modal.scrollTop = scrollTop;
-            }, 10);
-        }
-
-        applySettings() {
-            if (saveConfig(CONFIG)) {
-                // Показываем уведомление
-                this.showNotification('Настройки сохранены. Перезагрузка через 2 секунды...', 'success');
-
-                // Обновляем кнопку
-                const applyBtn = document.getElementById('yt-optimizer-apply');
-                if (applyBtn) {
-                    // Очищаем содержимое кнопки
-                    while (applyBtn.firstChild) {
-                        applyBtn.removeChild(applyBtn.firstChild);
-                    }
-
-                    // Создаем новый SVG
-                    const savedSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                    savedSvg.setAttribute('width', '20');
-                    savedSvg.setAttribute('height', '20');
-                    savedSvg.setAttribute('viewBox', '0 0 24 24');
-                    savedSvg.setAttribute('fill', 'none');
-                    savedSvg.setAttribute('stroke', 'currentColor');
-                    savedSvg.setAttribute('stroke-width', '2');
-
-                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                    path.setAttribute('d', 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4');
-                    const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-                    polyline.setAttribute('points', '7 10 12 15 17 10');
-                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                    line.setAttribute('x1', '12');
-                    line.setAttribute('y1', '15');
-                    line.setAttribute('x2', '12');
-                    line.setAttribute('y2', '3');
-
-                    savedSvg.appendChild(path);
-                    savedSvg.appendChild(polyline);
-                    savedSvg.appendChild(line);
-
-                    const iconSpan = document.createElement('span');
-                    iconSpan.appendChild(savedSvg);
-
-                    applyBtn.appendChild(iconSpan);
-                    applyBtn.appendChild(document.createTextNode(' Сохранено...'));
-                    applyBtn.disabled = true;
-                    applyBtn.style.opacity = '0.7';
-                }
-
-                // Перезагружаем страницу через 2 секунды
-                setTimeout(() => {
-                    location.reload();
-                }, 2000);
-            } else {
-                this.showNotification('Ошибка сохранения настроек', 'error');
-            }
-        }
-
-        showNotification(message, type = 'info') {
-            try {
-                GM_notification({
-                    text: message,
-                    title: 'Open YouTube Optimizer',
-                    timeout: 3000
-                });
-            } catch (e) {
-                // Fallback уведомление
-                this.showFallbackNotification(message, type);
-            }
-        }
-
-        showFallbackNotification(message, type) {
-            const notification = document.createElement('div');
-            Object.assign(notification.style, {
-                position: 'fixed',
-                top: '20px',
-                right: '20px',
-                background: type === 'success' ? '#4CAF50' : type === 'error' ? '#f44336' : '#2196F3',
-                color: 'white',
-                padding: '16px 20px',
-                borderRadius: '10px',
-                zIndex: '10001',
-                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.3)',
-                animation: 'slideIn 0.3s ease',
-                fontFamily: 'inherit',
-                fontSize: '16px',
-                maxWidth: '400px'
-            });
-
-            // Создаем содержимое уведомления
-            const contentDiv = document.createElement('div');
-            contentDiv.style.display = 'flex';
-            contentDiv.style.alignItems = 'center';
-            contentDiv.style.gap = '12px';
-
-            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            svg.setAttribute('width', '22');
-            svg.setAttribute('height', '22');
-            svg.setAttribute('viewBox', '0 0 24 24');
-            svg.setAttribute('fill', 'none');
-            svg.setAttribute('stroke', 'currentColor');
-            svg.setAttribute('stroke-width', '2');
-
-            if (type === 'success') {
-                const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-                polyline.setAttribute('points', '20 6 9 17 4 12');
-                svg.appendChild(polyline);
-            } else if (type === 'error') {
-                const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                line1.setAttribute('x1', '18');
-                line1.setAttribute('y1', '6');
-                line1.setAttribute('x2', '6');
-                line1.setAttribute('y2', '18');
-                const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                line2.setAttribute('x1', '6');
-                line2.setAttribute('y1', '6');
-                line2.setAttribute('x2', '18');
-                line2.setAttribute('y2', '18');
-                svg.appendChild(line1);
-                svg.appendChild(line2);
-            } else {
-                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                circle.setAttribute('cx', '12');
-                circle.setAttribute('cy', '12');
-                circle.setAttribute('r', '10');
-                const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                line1.setAttribute('x1', '12');
-                line1.setAttribute('y1', '8');
-                line1.setAttribute('x2', '12');
-                line1.setAttribute('y2', '12');
-                const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                line2.setAttribute('x1', '12');
-                line2.setAttribute('y1', '16');
-                line2.setAttribute('x2', '12.01');
-                line2.setAttribute('y2', '16');
-                svg.appendChild(circle);
-                svg.appendChild(line1);
-                svg.appendChild(line2);
+            .ytoo-version {
+                margin: 0;
+                color: #aaa;
+                font-size: 16px;
             }
 
-            const textSpan = document.createElement('span');
-            textSpan.textContent = message;
-
-            contentDiv.appendChild(svg);
-            contentDiv.appendChild(textSpan);
-            notification.appendChild(contentDiv);
-
-            document.body.appendChild(notification);
-
-            // Добавляем CSS для анимации
-            if (!document.getElementById('notification-animation')) {
-                const style = document.createElement('style');
-                style.id = 'notification-animation';
-                style.textContent = `
-                    @keyframes slideIn {
-                        from { transform: translateX(100%); opacity: 0; }
-                        to { transform: translateX(0); opacity: 1; }
-                    }
-                `;
-                document.head.appendChild(style);
+            .ytoo-tabs-container {
+                margin-bottom: 20px;
+                flex-grow: 1;
+                display: flex;
+                flex-direction: column;
+                min-height: 0;
             }
 
-            // Удаляем через 3 секунды
-            setTimeout(() => {
-                notification.style.animation = 'slideIn 0.3s ease reverse';
-                setTimeout(() => {
-                    if (notification.parentNode) {
-                        notification.parentNode.removeChild(notification);
-                    }
-                }, 300);
-            }, 3000);
+            .ytoo-tabs-header {
+                display: flex;
+                overflow-x: auto;
+                margin-bottom: 20px;
+                gap: 5px;
+                padding-bottom: 10px;
+                flex-shrink: 0;
+            }
+
+            .ytoo-tab-button {
+                padding: 10px 16px;
+                background: rgba(255,255,255,0.05);
+                border: 1px solid rgba(255,255,255,0.1);
+                border-radius: 8px;
+                color: white;
+                cursor: pointer;
+                white-space: nowrap;
+                font-size: 14px;
+                transition: all 0.2s;
+                flex-shrink: 0;
+            }
+
+            .ytoo-tab-button:hover {
+                background: rgba(255,255,255,0.1);
+            }
+
+            .ytoo-tab-button.active {
+                background: rgba(255,0,0,0.2);
+                border: 1px solid rgba(255,0,0,0.3);
+            }
+
+            .ytoo-tab-content {
+                background: #1a1a1a;
+                border-radius: 10px;
+                padding: 20px;
+                height: 500px;
+                overflow-y: auto;
+                flex-grow: 1;
+            }
+
+            .ytoo-setting-group {
+                margin-bottom: 20px;
+            }
+
+            .ytoo-setting-container {
+                margin-bottom: 20px;
+                padding: 16px;
+                background: #2a2a2a;
+                border-radius: 10px;
+                border-left: 4px solid #ff0000;
+                border: 1px solid #3a3a3a;
+                transition: all 0.2s ease;
+            }
+
+            .ytoo-setting-container:hover {
+                background: #333;
+            }
+
+            .ytoo-setting-container.disabled {
+                opacity: 0.5;
+                border-left-color: #666;
+            }
+
+            .ytoo-setting-container.checked {
+                border-left-color: #4CAF50;
+            }
+
+            .ytoo-setting-row {
+                display: flex;
+                align-items: flex-start;
+            }
+
+            .ytoo-checkbox-container {
+                flex-shrink: 0;
+                margin-right: 16px;
+            }
+
+            .ytoo-checkbox {
+                width: 22px;
+                height: 22px;
+                margin: 0;
+                cursor: pointer;
+                accent-color: #ff0000;
+            }
+
+            .ytoo-content-container {
+                flex-grow: 1;
+            }
+
+            .ytoo-setting-label {
+                display: block;
+                font-weight: 600;
+                color: #fff;
+                margin-bottom: 6px;
+                cursor: pointer;
+                font-size: 16px;
+            }
+
+            .ytoo-setting-description {
+                font-size: 14px;
+                color: #aaa;
+                line-height: 1.4;
+            }
+
+            .ytoo-status-container {
+                flex-shrink: 0;
+                margin-left: 16px;
+                display: flex;
+                align-items: center;
+            }
+
+            .ytoo-status-dot {
+                display: inline-block;
+                width: 14px;
+                height: 14px;
+                border-radius: 50%;
+                background: #666;
+                margin-right: 8px;
+            }
+
+            .ytoo-status-dot.checked {
+                background: #4CAF50;
+            }
+
+            .ytoo-status-text {
+                font-size: 12px;
+                color: #666;
+                font-weight: 600;
+            }
+
+            .ytoo-status-text.checked {
+                color: #4CAF50;
+            }
+
+            .ytoo-select {
+                width: 100%;
+                padding: 12px 16px;
+                background: #1a1a1a;
+                color: white;
+                border: 1px solid #444;
+                border-radius: 8px;
+                font-size: 16px;
+                outline: none;
+                transition: border-color 0.2s;
+                cursor: pointer;
+            }
+
+            .ytoo-select:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+
+            .ytoo-actions {
+                display: flex;
+                gap: 16px;
+                margin-top: 32px;
+                padding-top: 24px;
+                border-top: 2px solid #333;
+                flex-shrink: 0;
+            }
+
+            .ytoo-apply-btn {
+                flex: 1;
+                padding: 16px 24px;
+                background: linear-gradient(135deg, #ff0000, #cc0000);
+                color: white;
+                border: none;
+                border-radius: 12px;
+                font-size: 18px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.2s;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
+                min-height: 56px;
+            }
+
+            .ytoo-apply-btn:hover:not(:disabled) {
+                transform: translateY(-2px);
+                box-shadow: 0 8px 20px rgba(255, 0, 0, 0.3);
+            }
+
+            .ytoo-apply-btn:disabled {
+                opacity: 0.7;
+                cursor: not-allowed;
+            }
+
+            .ytoo-reset-btn {
+                padding: 16px 24px;
+                background: #333;
+                color: white;
+                border: none;
+                border-radius: 12px;
+                font-size: 16px;
+                cursor: pointer;
+                transition: background 0.2s;
+                font-weight: 500;
+                min-height: 56px;
+            }
+
+            .ytoo-reset-btn:hover {
+                background: #444;
+            }
+
+            .ytoo-notification {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #4CAF50;
+                color: white;
+                padding: 16px 24px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                z-index: 10001;
+                font-size: 14px;
+                font-weight: 500;
+                transform: translateX(120%);
+                transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+
+            .ytoo-notification.error {
+                background: #f44336;
+            }
+
+            .ytoo-settings-button {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                z-index: 10000;
+                width: 50px;
+                height: 50px;
+                border-radius: 50%;
+                background: linear-gradient(135deg, #ff0000, #cc0000, #990000);
+                color: white;
+                border: 2px solid white;
+                font-size: 24px;
+                cursor: pointer;
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                user-select: none;
+                overflow: hidden;
+            }
+
+            .ytoo-settings-button .tooltip {
+                position: absolute;
+                bottom: 100%;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(0, 0, 0, 0.9);
+                color: white;
+                padding: 8px 12px;
+                border-radius: 6px;
+                font-size: 12px;
+                white-space: nowrap;
+                opacity: 0;
+                transition: opacity 0.3s;
+                pointer-events: none;
+                z-index: 10001;
+                margin-bottom: 10px;
+            }
+
+            .ytoo-settings-button:hover .tooltip {
+                opacity: 1;
+            }
+
+            .ytoo-settings-button:hover {
+                transform: scale(1.15) rotate(15deg);
+            }
+
+            /* Scrollbar styling */
+            .ytoo-tab-content::-webkit-scrollbar {
+                width: 8px;
+            }
+
+            .ytoo-tab-content::-webkit-scrollbar-track {
+                background: #1a1a1a;
+                border-radius: 4px;
+            }
+
+            .ytoo-tab-content::-webkit-scrollbar-thumb {
+                background: #444;
+                border-radius: 4px;
+            }
+
+            .ytoo-tab-content::-webkit-scrollbar-thumb:hover {
+                background: #555;
+            }
+        `;
+
+            const style = document.createElement('style');
+            style.textContent = styles;
+            style.id = 'ytoo-styles';
+
+            const oldStyle = document.getElementById('ytoo-styles');
+            if (oldStyle) {
+                oldStyle.remove();
+            }
+
+            document.head.appendChild(style);
         }
 
         close() {
@@ -1029,502 +1474,730 @@
                 this.modal = null;
                 this.overlay = null;
                 this.isOpen = false;
+                this.cachedElements.clear();
+
+                this.removeGlobalEventListeners();
             }, 300);
         }
-    }
 
-    // ============================================================================
-    // ANIMATION DISABLER
-    // ============================================================================
-    function disableAnimations() {
-        if (!CONFIG.disableAnimations) return;
-
-        const css = `
-            ytd-app,
-            ytd-page-manager,
-            ytd-browse,
-            ytd-watch-flexy,
-            #columns,
-            #primary,
-            #secondary,
-            ytd-rich-item-renderer,
-            ytd-video-renderer,
-            ytd-compact-video-renderer {
-                animation: none !important;
-                animation-delay: 0ms !important;
-                animation-duration: 0ms !important;
-                transition: none !important;
-                transition-delay: 0ms !important;
-                transition-duration: 0ms !important;
+        handleEscapeKey(e) {
+            if (e.key === 'Escape' && this.isOpen) {
+                this.close();
             }
-
-            html {
-                scroll-behavior: auto !important;
-            }
-
-            video,
-            ytd-player,
-            .html5-video-player,
-            #movie_player {
-                animation: initial !important;
-                transition: initial !important;
-            }
-
-            ytd-button-renderer,
-            yt-icon-button,
-            button,
-            [role="button"] {
-                transition: opacity 0.1s !important;
-            }
-        `;
-
-        const style = document.createElement('style');
-        style.id = 'yt-optimizer-animations';
-        style.textContent = css;
-        document.head.appendChild(style);
-
-        Logger.log('Animations disabled');
-    }
-
-    // ============================================================================
-    // TIMER OPTIMIZER
-    // ============================================================================
-    function optimizeTimers() {
-        if (!CONFIG.throttleTimers) return;
-
-        const timerStats = {
-            totalThrottled: 0,
-            lastReport: Date.now()
-        };
-
-        // ТОЛЬКО для длинных таймеров
-        const originalSetInterval = window.setInterval;
-        window.setInterval = function(callback, delay, ...args) {
-            // Не трогаем таймеры связанные с видео и короткие таймеры
-            if (delay < 1000) {
-                return originalSetInterval(callback, delay, ...args);
-            }
-
-            const throttledDelay = Math.max(delay, 2000); // Минимум 2 секунды для длинных таймеров
-            timerStats.totalThrottled++;
-            Logger.log(`Throttled setInterval from ${delay}ms to ${throttledDelay}ms`);
-            return originalSetInterval(callback, throttledDelay, ...args);
-        };
-
-        const originalSetTimeout = window.setTimeout;
-        window.setTimeout = function(callback, delay, ...args) {
-            // Не трогаем критичные таймеры
-            if (delay < 100) {
-                return originalSetTimeout(callback, delay, ...args);
-            }
-
-            // Только для очень длинных таймаутов
-            if (delay > 5000) {
-                const throttledDelay = Math.max(delay, 10000); // Минимум 10 секунд
-                timerStats.totalThrottled++;
-                Logger.log(`Throttled setTimeout from ${delay}ms to ${throttledDelay}ms`);
-                return originalSetTimeout(callback, throttledDelay, ...args);
-            }
-
-            return originalSetTimeout(callback, delay, ...args);
-        };
-
-        // НЕ трогаем requestAnimationFrame для стабильности видео
-        Logger.log('Safe timer optimization enabled');
-    }
-
-    // ============================================================================
-    // UI CLEANER
-    // ============================================================================
-    function cleanUI() {
-        if (!CONFIG.removeJunkUI) return;
-
-        const removalSelectors = [
-            // Короткие видео (Shorts)
-            CONFIG.removeShorts && '[is-shorts]',
-            CONFIG.removeShorts && 'ytd-reel-shelf-renderer',
-            CONFIG.removeShorts && 'ytd-rich-shelf-renderer[title*="Shorts"]',
-            CONFIG.removeShorts && '#shorts-container',
-
-            // Ненужные элементы интерфейса
-            'ytd-mini-guide-renderer',
-            'ytd-notification-topbar-button-renderer',
-            'ytd-guide-entry-renderer[title*="Premium"]',
-            'ytd-guide-entry-renderer[title*="YouTube Music"]',
-
-            // Комментарии (опционально)
-            CONFIG.removeComments && '#comments',
-            CONFIG.removeComments && 'ytd-comments',
-
-            // Дополнительные элементы
-            'ytd-merch-shelf-renderer',
-            'ytd-clarification-renderer',
-            'ytd-info-panel-container-renderer'
-        ].filter(Boolean);
-
-        // Упрощение интерфейса
-        if (CONFIG.simplifyUI) {
-            removalSelectors.push(
-                '#secondary',
-                '#related',
-                'ytd-watch-next-secondary-results-renderer',
-                '.ytp-ce-element',
-                '.ytp-cards-teaser'
-            );
         }
 
-        const observer = new MutationObserver((mutations) => {
-            safeExecute(() => {
-                mutations.forEach((mutation) => {
-                    if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-                        removalSelectors.forEach(selector => {
-                            mutation.addedNodes.forEach(node => {
-                                if (node.nodeType === 1) {
-                                    node.querySelectorAll?.(selector)?.forEach(el => {
-                                        if (!el.closest('ytd-player')) {
-                                            el.remove();
-                                            Logger.log(`Removed: ${selector}`);
-                                        }
-                                    });
-                                }
-                            });
-                        });
+        handleOverlayClick(e) {
+            if (e.target === this.overlay && this.isOpen) {
+                this.close();
+            }
+        }
+
+        addGlobalEventListeners() {
+            if (this.overlay) {
+                this.overlay.addEventListener('click', this.handleOverlayClick);
+            }
+            document.addEventListener('keydown', this.handleEscapeKey);
+        }
+
+        removeGlobalEventListeners() {
+            if (this.overlay) {
+                this.overlay.removeEventListener('click', this.handleOverlayClick);
+            }
+            document.removeEventListener('keydown', this.handleEscapeKey);
+        }
+
+        createModal() {
+            const oldModal = document.querySelector('.ytoo-modal');
+            const oldOverlay = document.querySelector('.ytoo-modal-overlay');
+
+            if (oldModal) oldModal.remove();
+            if (oldOverlay) oldOverlay.remove();
+
+            this.overlay = document.createElement('div');
+            this.overlay.className = 'ytoo-modal-overlay';
+
+            this.modal = document.createElement('div');
+            this.modal.className = 'ytoo-modal';
+        }
+
+        open() {
+            if (this.isOpen) return;
+
+            this.createModal();
+
+            const content = this.createModalContent();
+            this.modal.appendChild(content);
+
+            document.body.appendChild(this.overlay);
+            document.body.appendChild(this.modal);
+
+            requestAnimationFrame(() => {
+                this.overlay.style.opacity = '1';
+                this.modal.style.opacity = '1';
+                this.modal.style.transform = 'translate(-50%, -50%) scale(1)';
+            });
+
+            this.isOpen = true;
+
+            this.addGlobalEventListeners();
+
+            this.setupEventDelegation();
+        }
+
+        setupEventDelegation() {
+            if (!this.modal) return;
+
+            this.modal.addEventListener('click', (e) => {
+                const tabBtn = e.target.closest('.ytoo-tab-button');
+                if (tabBtn) {
+                    e.preventDefault();
+                    this.handleTabClick(tabBtn);
+                    return;
+                }
+
+                if (e.target.closest('#yt-optimizer-apply')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.handleApplyClick(e.target.closest('#yt-optimizer-apply'));
+                    return;
+                }
+
+                if (e.target.closest('#yt-optimizer-reset')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.handleResetClick();
+                    return;
+                }
+
+                const label = e.target.closest('label.ytoo-setting-label');
+                if (label && label.htmlFor) {
+                    const checkbox = document.getElementById(label.htmlFor);
+                    if (checkbox) {
+                        checkbox.checked = !checkbox.checked;
+                        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
                     }
-                });
-            }, 'UI Cleaner Mutation');
-        });
+                    return;
+                }
+            });
 
-        // Начальная очистка
-        setTimeout(() => {
-            safeExecute(() => {
-                removalSelectors.forEach(selector => {
-                    document.querySelectorAll(selector).forEach(el => {
-                        if (!el.closest('ytd-player')) {
-                            el.remove();
-                        }
-                    });
-                });
-            }, 'Initial UI Clean');
-        }, 2000);
-
-        // Наблюдение за изменениями
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-
-        Logger.log('UI cleaner activated');
-    }
-
-    // ============================================================================
-    // VIDEO QUALITY LIMITER
-    // ============================================================================
-    function setupQualityLimiter() {
-        if (!CONFIG.limitVideoQuality) return;
-
-        const qualityMap = {
-            '360p': 'medium',
-            '480p': 'large',
-            '720p': 'hd720',
-            '1080p': 'hd1080',
-            '1440p': 'hd1440',
-            '2160p': 'hd2160'
-        };
-
-        const targetQuality = qualityMap[CONFIG.maxQuality];
-        if (!targetQuality) {
-            Logger.warn(`Unknown quality setting: ${CONFIG.maxQuality}`);
-            return;
+            this.modal.addEventListener('change', (e) => {
+                if (e.target.classList.contains('ytoo-checkbox')) {
+                    this.handleCheckboxChange(e.target);
+                } else if (e.target.classList.contains('ytoo-select')) {
+                    this.handleSelectChange(e.target);
+                }
+            });
         }
 
-        Logger.log(`Setting up quality limiter to: ${CONFIG.maxQuality} (${targetQuality})`);
+        handleTabClick(tabButton) {
+            const tabs = this.modal.querySelectorAll('.ytoo-tab-button');
+            tabs.forEach(tab => tab.classList.remove('active'));
+            tabButton.classList.add('active');
 
-        let qualityApplied = false;
-        let checkInterval = null;
+            this.activeTab = tabButton.textContent;
 
-        // Функция для проверки и установки качества
-        function checkAndSetQuality() {
-            const video = document.querySelector('video');
-            if (!video) return false;
-
-            // Пытаемся найти плеер YouTube
-            const player = document.querySelector('#movie_player') ||
-                          document.querySelector('.html5-video-player') ||
-                          document.querySelector('ytd-player');
-
-            if (!player) return false;
-
-            // Попытка 1: Через data-атрибуты YouTube
-            try {
-                // Устанавливаем предпочтительное качество через dataset
-                player.dataset.preferredQuality = targetQuality;
-                player.dataset.quality = targetQuality;
-
-                // Для YouTube плеера может быть доступен специальный атрибут
-                if (player.setPlaybackQualityRange) {
-                    player.setPlaybackQualityRange(targetQuality, targetQuality);
-                    Logger.log(`Quality range set to: ${targetQuality}`);
-                    return true;
-                }
-            } catch (e) {}
-
-            // Попытка 2: Через события и свойства
-            try {
-                // Отправляем кастомное событие
-                const qualityEvent = new CustomEvent('playbackqualitychange', {
-                    detail: { quality: targetQuality }
-                });
-                player.dispatchEvent(qualityEvent);
-
-                // Пытаемся установить через свойства
-                if (video.playbackQuality && video.playbackQuality !== targetQuality) {
-                    video.playbackQuality = targetQuality;
-                    Logger.log(`Playback quality set to: ${targetQuality}`);
-                    return true;
-                }
-
-                if (video.suggestedQuality && video.suggestedQuality !== targetQuality) {
-                    video.suggestedQuality = targetQuality;
-                    Logger.log(`Suggested quality set to: ${targetQuality}`);
-                    return true;
-                }
-            } catch (e) {}
-
-            // Попытка 3: Через интерцепцию меню качества
-            try {
-                // Находим кнопку настроек качества
-                const settingsButton = document.querySelector('.ytp-settings-button');
-                if (settingsButton) {
-                    // Открываем меню настроек
-                    settingsButton.click();
-
-                    setTimeout(() => {
-                        // Ищем пункт меню качества
-                        const qualityMenuItems = document.querySelectorAll('.ytp-settings-menu .ytp-menuitem');
-                        qualityMenuItems.forEach(item => {
-                            const label = item.textContent || '';
-                            if (label.includes('Качество') || label.includes('Quality')) {
-                                // Кликаем на пункт качества
-                                item.click();
-
-                                setTimeout(() => {
-                                    // Ищем нужное качество в подменю
-                                    const targetQualityItem = Array.from(
-                                        document.querySelectorAll('.ytp-quality-menu .ytp-menuitem')
-                                    ).find(menuItem => {
-                                        const text = menuItem.textContent || '';
-                                        return text.includes(CONFIG.maxQuality) ||
-                                               text.includes(targetQuality);
-                                    });
-
-                                    if (targetQualityItem) {
-                                        targetQualityItem.click();
-                                        Logger.log(`Quality selected from menu: ${CONFIG.maxQuality}`);
-                                        qualityApplied = true;
-                                    }
-
-                                    // Закрываем меню
-                                    settingsButton.click();
-                                }, 300);
-                            }
-                        });
-                    }, 300);
-                }
-            } catch (e) {}
-
-            return false;
+            const tabContent = this.modal.querySelector('.ytoo-tab-content');
+            if (tabContent) {
+                this.updateTabContent(tabContent, this.activeTab);
+            }
         }
 
-        // Функция мониторинга качества
-        function monitorQuality() {
-            if (qualityApplied) return;
+        handleCheckboxChange(checkbox) {
+            const key = checkbox.id.replace('setting-', '');
+            CONFIG[key] = checkbox.checked;
 
-            const success = checkAndSetQuality();
+            if (key === 'limitVideoQuality') {
+                const qualitySelect = this.modal.querySelector('#setting-maxQuality');
+                if (qualitySelect) {
+                    qualitySelect.disabled = !checkbox.checked;
+                    const container = qualitySelect.closest('.ytoo-setting-container');
+                    if (container) {
+                        container.classList.toggle('disabled', !checkbox.checked);
+                    }
+                }
+            }
+
+            if (key === 'showSettingsButton') {
+                if (checkbox.checked) {
+                    if (!this.settingsButton) {
+                        this.createSettingsButton();
+                    } else {
+                        this.settingsButton.style.display = 'flex';
+                    }
+                } else if (this.settingsButton) {
+                    this.settingsButton.style.display = 'none';
+                }
+            }
+
+            const container = checkbox.closest('.ytoo-setting-container');
+            if (container) {
+                const statusDot = container.querySelector('.ytoo-status-dot');
+                const statusText = container.querySelector('.ytoo-status-text');
+
+                if (checkbox.checked) {
+                    container.classList.add('checked');
+                    if (statusDot) statusDot.classList.add('checked');
+                    if (statusText) {
+                        statusText.classList.add('checked');
+                        statusText.textContent = 'ON';
+                    }
+                } else {
+                    container.classList.remove('checked');
+                    if (statusDot) statusDot.classList.remove('checked');
+                    if (statusText) {
+                        statusText.classList.remove('checked');
+                        statusText.textContent = 'OFF';
+                    }
+                }
+            }
+        }
+
+        handleSelectChange(select) {
+            const key = select.id.replace('setting-', '');
+            CONFIG[key] = select.value;
+        }
+
+        handleApplyClick(button) {
+            if (this.applyTimeout) return;
+
+            this.animateApplyButton(button);
+            this.collectCurrentFormValues();
+
+            const success = saveConfig(CONFIG);
+
             if (success) {
-                qualityApplied = true;
-                if (checkInterval) {
-                    clearInterval(checkInterval);
-                    checkInterval = null;
-                }
-                Logger.log(`Quality successfully limited to ${CONFIG.maxQuality}`);
+                this.showNotification('Settings saved successfully! Reloading page...', 'success');
+                this.applyTimeout = setTimeout(() => {
+                    location.reload();
+                }, 1500);
+            } else {
+                this.showNotification('Failed to save settings!', 'error');
             }
         }
 
-        // Запускаем мониторинг с задержкой
-        setTimeout(() => {
-            monitorQuality();
+        handleResetClick() {
+            if (confirm('Reset all settings to default values? This will reload the page.')) {
+                CONFIG = { ...DEFAULT_CONFIG };
+                saveConfig(CONFIG);
+                setTimeout(() => location.reload(), 500);
+            }
+        }
 
-            // Периодическая проверка
-            checkInterval = setInterval(monitorQuality, 3000);
+        animateApplyButton(button) {
+            const originalContent = button.innerHTML;
+            const originalBackground = button.style.background;
 
-            // Останавливаем проверку через 30 секунд
+            button.disabled = true;
+            button.style.transform = 'scale(0.95)';
+            button.style.background = 'linear-gradient(135deg, #4CAF50, #45a049)';
+            button.innerHTML = '<span>✓</span><span>Saving...</span>';
+
             setTimeout(() => {
-                if (checkInterval) {
-                    clearInterval(checkInterval);
-                    checkInterval = null;
-                    if (!qualityApplied) {
-                        Logger.warn(`Failed to set quality to ${CONFIG.maxQuality} after 30 seconds`);
-                    }
-                }
-            }, 30000);
-        }, 3000);
+                button.style.transform = 'scale(1)';
+                button.style.background = 'linear-gradient(135deg, #4CAF50, #45a049)';
+                button.innerHTML = '<span>✓</span><span>Saved!</span>';
 
-        // Обработчик для новых видео (SPA навигация)
-        document.addEventListener('yt-navigate-finish', () => {
-            qualityApplied = false;
-            setTimeout(() => {
-                monitorQuality();
-
-                if (!checkInterval) {
-                    checkInterval = setInterval(monitorQuality, 3000);
-                }
-            }, 2000);
-        });
-
-        // Перехват кликов на меню качества
-        document.addEventListener('click', (e) => {
-            const target = e.target;
-            if (target.closest('.ytp-settings-button') ||
-                target.closest('[aria-label*="quality"]') ||
-                target.closest('[aria-label*="качество"]')) {
-
-                // После клика на меню качества, снова применяем настройку
                 setTimeout(() => {
-                    if (!qualityApplied) {
-                        monitorQuality();
+                    if (button && button.parentNode) {
+                        button.disabled = false;
+                        button.style.transform = 'translateY(0)';
+                        button.style.background = originalBackground;
+                        button.innerHTML = originalContent;
                     }
                 }, 1000);
-            }
-        });
+            }, 300);
+        }
 
-        Logger.log('Quality limiter initialized');
-    }
+        collectCurrentFormValues() {
+            const checkboxes = this.modal.querySelectorAll('.ytoo-checkbox');
+            const selects = this.modal.querySelectorAll('.ytoo-select');
 
-    // ============================================================================
-    // PLAYER OPTIMIZER
-    // ============================================================================
-    function optimizePlayer() {
-        // Отключение автозапуска
-        if (CONFIG.disableAutoplay) {
-            const disableAutoplay = () => {
-                const autoplayToggle = document.querySelector('.ytp-autonav-toggle-button');
-                if (autoplayToggle?.getAttribute('aria-checked') === 'true') {
-                    autoplayToggle.click();
-                    Logger.log('Autoplay disabled');
-                    return true;
+            checkboxes.forEach(checkbox => {
+                const key = checkbox.id.replace('setting-', '');
+                CONFIG[key] = checkbox.checked;
+            });
+
+            selects.forEach(select => {
+                const key = select.id.replace('setting-', '');
+                CONFIG[key] = select.value;
+            });
+        }
+
+        showNotification(message, type = 'success') {
+            const oldNotification = document.querySelector('.ytoo-notification');
+            if (oldNotification) oldNotification.remove();
+
+            const notification = document.createElement('div');
+            notification.className = `ytoo-notification ${type === 'error' ? 'error' : ''}`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            requestAnimationFrame(() => {
+                notification.style.transform = 'translateX(0)';
+            });
+
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.style.transform = 'translateX(120%)';
+                    setTimeout(() => {
+                        if (notification.parentNode) {
+                            notification.parentNode.removeChild(notification);
+                        }
+                    }, 300);
                 }
-                return false;
+            }, 3000);
+        }
+
+        initialize() {
+            this.injectStyles();
+            CONFIG = loadConfig();
+
+            if (CONFIG.showSettingsButton) {
+                this.createSettingsButton();
+            }
+
+            try {
+                GM_registerMenuCommand('⚙ Open YouTube Optimizer Settings', () => this.open());
+            } catch (e) {
+            }
+
+            this.setupFullscreenHandlers();
+        }
+
+        setupFullscreenHandlers() {
+            const checkFullscreen = () => {
+                const isFullscreen = !!(
+                    document.fullscreenElement ||
+                    document.webkitFullscreenElement ||
+                    document.mozFullScreenElement ||
+                    document.msFullscreenElement ||
+                    document.querySelector('.html5-video-player[fullscreen]') ||
+                    document.querySelector('.html5-video-player.ytp-fullscreen')
+                );
+
+                if (this.isFullscreen !== isFullscreen) {
+                    this.isFullscreen = isFullscreen;
+                    this.updateButtonVisibility();
+                }
             };
 
-            // Первая попытка
-            setTimeout(disableAutoplay, 3000);
-
-            // Наблюдение за изменениями
-            const observer = new MutationObserver(() => {
-                disableAutoplay();
+            ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'].forEach(event => {
+                document.addEventListener(event, checkFullscreen);
             });
 
-            observer.observe(document.body, {
-                childList: true,
-                subtree: true
+            document.addEventListener('yt-fullscreen-change', (e) => {
+                this.isFullscreen = e.detail && e.detail.isFullscreen;
+                this.updateButtonVisibility();
             });
+
+            setTimeout(checkFullscreen, 100);
         }
 
-        // Ограничитель качества видео
-        if (CONFIG.limitVideoQuality) {
-            setupQualityLimiter();
+        updateButtonVisibility() {
+            if (this.settingsButton) {
+                this.settingsButton.style.display = this.isFullscreen ? 'none' : 'flex';
+            }
         }
-    }
 
-    // ============================================================================
-    // LAZY LOADING
-    // ============================================================================
-    function optimizeLazyLoading() {
-        if (!CONFIG.lazyLoadImages) return;
+        createSettingsButton() {
+            if (document.getElementById('yt-optimizer-settings-btn')) {
+                this.settingsButton = document.getElementById('yt-optimizer-settings-btn');
+                return;
+            }
 
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    const img = entry.target;
-                    if (img.dataset.src) {
-                        img.src = img.dataset.src;
-                        img.removeAttribute('data-src');
-                        observer.unobserve(img);
+            this.settingsButton = document.createElement('button');
+            this.settingsButton.id = 'yt-optimizer-settings-btn';
+            this.settingsButton.className = 'ytoo-settings-button';
+            this.settingsButton.innerHTML = '⚡<span class="tooltip">Open YouTube Optimizer Settings</span>';
+            this.settingsButton.setAttribute('aria-label', 'Open YouTube Optimizer Settings');
+            this.settingsButton.setAttribute('type', 'button');
+
+            this.settingsButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.open();
+            });
+
+            this.settingsButton.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                return false;
+            });
+
+            setTimeout(() => {
+                this.settingsButton.style.opacity = '0';
+                document.body.appendChild(this.settingsButton);
+                requestAnimationFrame(() => {
+                    this.settingsButton.style.transition = 'opacity 0.5s ease';
+                    this.settingsButton.style.opacity = '1';
+                });
+            }, 1000);
+        }
+
+        createModalContent() {
+            const container = document.createElement('div');
+            container.className = 'ytoo-modal-content';
+
+            const header = this.createHeader();
+            container.appendChild(header);
+
+            const tabsContainer = document.createElement('div');
+            tabsContainer.className = 'ytoo-tabs-container';
+
+            const tabsHeader = document.createElement('div');
+            tabsHeader.className = 'ytoo-tabs-header';
+
+            const tabsContent = document.createElement('div');
+            tabsContent.className = 'ytoo-tab-content';
+
+            Object.keys(this.getCategories())
+                .forEach(categoryName => {
+                    const tabButton = document.createElement('button');
+                    tabButton.className = `ytoo-tab-button ${categoryName === this.activeTab ? 'active' : ''}`;
+                    tabButton.textContent = categoryName;
+                    tabButton.dataset.category = categoryName;
+                    tabsHeader.appendChild(tabButton);
+                });
+
+            tabsContainer.appendChild(tabsHeader);
+            tabsContainer.appendChild(tabsContent);
+            container.appendChild(tabsContainer);
+
+            this.updateTabContent(tabsContent, this.activeTab);
+
+            const actionsDiv = this.createActionButtons();
+            container.appendChild(actionsDiv);
+
+            return container;
+        }
+
+        createHeader() {
+            const header = document.createElement('div');
+            header.className = 'ytoo-header';
+
+            const title = document.createElement('h2');
+            title.className = 'ytoo-title';
+
+            const iconSpan = document.createElement('span');
+            iconSpan.className = 'ytoo-title-icon';
+            iconSpan.textContent = '⚡';
+
+            const titleText = document.createTextNode(' Open YouTube Optimizer');
+            title.appendChild(iconSpan);
+            title.appendChild(titleText);
+
+            const version = document.createElement('p');
+            version.className = 'ytoo-version';
+            version.textContent = 'Version 2.0';
+
+            header.appendChild(title);
+            header.appendChild(version);
+
+            return header;
+        }
+
+        createActionButtons() {
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'ytoo-actions';
+
+            const applyBtn = document.createElement('button');
+            applyBtn.id = 'yt-optimizer-apply';
+            applyBtn.className = 'ytoo-apply-btn';
+            applyBtn.setAttribute('type', 'button');
+            applyBtn.innerHTML = '<span>✓</span><span>Apply and Reload</span>';
+
+            const resetBtn = document.createElement('button');
+            resetBtn.id = 'yt-optimizer-reset';
+            resetBtn.className = 'ytoo-reset-btn';
+            resetBtn.setAttribute('type', 'button');
+            resetBtn.textContent = 'Reset to Defaults';
+
+            actionsDiv.appendChild(applyBtn);
+            actionsDiv.appendChild(resetBtn);
+
+            return actionsDiv;
+        }
+
+        getCategories() {
+            return {
+                '⚡ Производительность': [
+                    { key: 'disableAnimations', label: 'Отключить анимации', description: 'Убирает все CSS-анимации и переходы' },
+                    { key: 'throttleTimers', label: 'Оптимизировать таймеры', description: 'Замедляет фоновые JavaScript-таймеры' },
+                    { key: 'lazyLoadImages', label: 'Ленивая загрузка изображений', description: 'Оптимизирует загрузку изображений' },
+                    { key: 'memoryLeakFix', label: 'Исправление утечек памяти', description: 'Исправляет утечки памяти на YouTube' },
+                    { key: 'optimizeThumbnails', label: 'Оптимизировать превью', description: 'Улучшает загрузку миниатюр видео' },
+                ],
+                '🎨 Внешний вид': [
+                    { key: 'simplifyUI', label: 'Упростить интерфейс', description: 'Минималистичный интерфейс YouTube' },
+                    { key: 'disableBlurEffects', label: 'Отключить размытие', description: 'Убирает эффекты размытия фона' },
+                    { key: 'disableShadows', label: 'Отключить тени', description: 'Убирает эффекты теней' },
+                    { key: 'disableNotifications', label: 'Отключить уведомления', description: 'Скрывает бейджи уведомлений' },
+                ],
+                '🚫 Блокировка контента': [
+                    { key: 'removeAds', label: 'Убрать рекламу', description: 'Блокирует рекламу' },
+                    { key: 'removeShorts', label: 'Убрать Shorts', description: 'Полностью скрывает YouTube Shorts' },
+                    { key: 'removeComments', label: 'Убрать комментарии', description: 'Скрывает раздел комментариев' },
+                    { key: 'removeTrending', label: 'Убрать "В тренде"', description: 'Скрывает раздел популярного контента' },
+                    { key: 'removeLiveChat', label: 'Убрать живой чат', description: 'Скрывает чат на трансляциях' },
+                    { key: 'removePromo', label: 'Убрать промо-материалы', description: 'Скрывает промо-материалы YouTube' },
+                ],
+                '🎬 Плеер': [
+                    { key: 'disableAutoplay', label: 'Отключить автовоспроизведение', description: 'Отключает автоматическое воспроизведение видео' },
+                    { key: 'limitVideoQuality', label: 'Ограничить качество видео', description: 'Устанавливает максимальное качество видео' },
+                    {
+                        type: 'select',
+                        key: 'maxQuality',
+                        label: 'Максимальное качество',
+                        options: [
+                            { value: '360p', label: '360p' },
+                            { value: '480p', label: '480p' },
+                            { value: '720p', label: '720p (HD)' },
+                            { value: '1080p', label: '1080p (Full HD)' },
+                            { value: '1440p', label: '1440p (2K)' },
+                            { value: '2160p', label: '2160p (4K)' }
+                        ],
+                        disabled: !CONFIG.limitVideoQuality
+                    },
+                    { key: 'disablePlayerGradients', label: 'Отключить градиенты плеера', description: 'Убирает градиенты в верхней/нижней части плеера' },
+                    { key: 'disablePlayerWatermarkAndAnnotations', label: 'Отключить водяной знак и аннотации', description: 'Скрывает водяной знак YouTube и аннотации' },
+                    { key: 'removeInfoAndPlayerCards', label: 'Убрать информационные и игровые карточки', description: 'Убирает информацию о видео и карточки в плеере' },
+                    { key: 'removeEndScreen', label: 'Убрать завершающий экран', description: 'Скрывает рекомендации в конце видео' },
+                ],
+                '⚙️ Настройки OYO': [
+                    { key: 'showSettingsButton', label: 'Показать кнопку настроек', description: 'Отображает плавающую кнопку настроек' },
+                ],
+            };
+        }
+
+        updateTabContent(container, categoryName) {
+            const categories = this.getCategories();
+            const settings = categories[categoryName];
+
+            if (!settings) return;
+
+            const fragment = document.createDocumentFragment();
+
+            settings.forEach(setting => {
+                const element = this.createSettingElement(setting);
+                fragment.appendChild(element);
+            });
+
+            container.innerHTML = '';
+            container.appendChild(fragment);
+        }
+
+        createSettingElement(setting) {
+            const container = document.createElement('div');
+            container.className = 'ytoo-setting-container';
+
+            if (setting.disabled) {
+                container.classList.add('disabled');
+            }
+
+            if (setting.type === 'select') {
+                const label = document.createElement('label');
+                label.className = 'ytoo-setting-label';
+                label.textContent = setting.label;
+                label.htmlFor = `setting-${setting.key}`;
+
+                const select = document.createElement('select');
+                select.id = `setting-${setting.key}`;
+                select.className = 'ytoo-select';
+                select.disabled = setting.disabled;
+
+                setting.options.forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt.value;
+                    option.textContent = opt.label;
+                    if (CONFIG[setting.key] === opt.value) {
+                        option.selected = true;
                     }
+                    select.appendChild(option);
+                });
+
+                container.appendChild(label);
+                container.appendChild(select);
+
+                if (setting.description) {
+                    const description = document.createElement('div');
+                    description.className = 'ytoo-setting-description';
+                    description.textContent = setting.description;
+                    container.appendChild(description);
                 }
-            });
-        }, {
-            rootMargin: '200px',
-            threshold: 0.01
-        });
+            } else {
+                const isChecked = CONFIG[setting.key];
+                if (isChecked) {
+                    container.classList.add('checked');
+                }
 
-        new MutationObserver(() => {
-            document.querySelectorAll('img[data-src]:not([src])').forEach(img => {
-                observer.observe(img);
-            });
-        }).observe(document.body, {
-            childList: true,
-            subtree: true
-        });
+                const row = document.createElement('div');
+                row.className = 'ytoo-setting-row';
 
-        Logger.log('Lazy loading optimized');
+                const checkboxContainer = document.createElement('div');
+                checkboxContainer.className = 'ytoo-checkbox-container';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `setting-${setting.key}`;
+                checkbox.className = 'ytoo-checkbox';
+                checkbox.checked = isChecked;
+
+                checkboxContainer.appendChild(checkbox);
+
+                const contentContainer = document.createElement('div');
+                contentContainer.className = 'ytoo-content-container';
+
+                const label = document.createElement('label');
+                label.className = 'ytoo-setting-label';
+                label.htmlFor = `setting-${setting.key}`;
+                label.textContent = setting.label;
+
+                contentContainer.appendChild(label);
+
+                if (setting.description) {
+                    const description = document.createElement('div');
+                    description.className = 'ytoo-setting-description';
+                    description.textContent = setting.description;
+                    contentContainer.appendChild(description);
+                }
+
+                const statusContainer = document.createElement('div');
+                statusContainer.className = 'ytoo-status-container';
+
+                const statusDot = document.createElement('span');
+                statusDot.className = `ytoo-status-dot ${isChecked ? 'checked' : ''}`;
+
+                const statusText = document.createElement('span');
+                statusText.className = `ytoo-status-text ${isChecked ? 'checked' : ''}`;
+                statusText.textContent = isChecked ? 'ON' : 'OFF';
+
+                statusContainer.appendChild(statusDot);
+                statusContainer.appendChild(statusText);
+
+                row.appendChild(checkboxContainer);
+                row.appendChild(contentContainer);
+                row.appendChild(statusContainer);
+                container.appendChild(row);
+            }
+            return container;
+        }
     }
+    window.ytOptimizerUI = new SettingsUI();
 
     // ============================================================================
-    // MAIN INITIALIZATION
+    // INITIALIZATION
     // ============================================================================
     function initialize() {
-        Logger.log('Initializing Open YouTube Optimizer v1.2...');
-        Logger.log('Config loaded:', CONFIG);
+        const cleanupFunctions = [];
 
-        // Инициализируем UI
         const settingsUI = new SettingsUI();
         window.ytOptimizerUI = settingsUI;
 
-        // Применяем оптимизации
         const optimizations = [
-            { fn: disableAnimations, name: 'Disable Animations' },
-            { fn: optimizeTimers, name: 'Optimize Timers' },
-            { fn: cleanUI, name: 'Clean UI' },
-            { fn: optimizePlayer, name: 'Optimize Player' },
-            { fn: optimizeLazyLoading, name: 'Lazy Load Optimization' }
+            { fn: applyMemoryLeakFix, name: 'Memory Leak Fix' },
+            { fn: injectAdvancedCSS, name: 'Advanced CSS Injection' },
+            { fn: disableAnimations, name: 'Animation Disabler' },
+            { fn: cleanUI, name: 'UI Cleaner' },
+            { fn: optimizeTimers, name: 'Timer Optimizer' },
+            { fn: optimizePlayer, name: 'Player Optimizer' },
+            { fn: optimizeLazyLoading, name: 'Lazy Load Optimization' },
+            { fn: cleanNotificationTitles, name: 'Notification Cleaner' },
+            { fn: disableTrailerAutoplay, name: 'Trailer Autoplay Disabler' },
+            { fn: preventAutoPause, name: 'Auto-pause Prevention' },
+            { fn: cleanUrlParameters, name: 'URL Parameter Cleaner' }
         ];
 
-        optimizations.forEach(({ fn, name }) => {
-            safeExecute(fn, name);
+        function runOptimizations() {
+            for (let i = 0; i < optimizations.length; i++) {
+                const { fn, name } = optimizations[i];
+                try {
+                    const cleanup = fn();
+                    if (typeof cleanup === 'function') {
+                        cleanupFunctions.push(cleanup);
+                    }
+                } catch (error) {}
+            }
+        }
+
+        function cleanupAll() {
+            for (let i = 0; i < cleanupFunctions.length; i++) {
+                try {
+                    cleanupFunctions[i]();
+                } catch (e) {}
+            }
+            cleanupFunctions.length = 0;
+        }
+        runOptimizations();
+
+        // ------------------------------------------------------------------------
+        // SPA Navigation handling (YouTube)
+        // ------------------------------------------------------------------------
+        let lastUrl = location.href;
+        let spaTimer = 0;
+
+        function handleSPANavigation() {
+            if (location.href === lastUrl) return;
+
+            if (spaTimer) {
+                clearTimeout(spaTimer);
+            }
+
+            spaTimer = setTimeout(() => {
+                const currentUrl = location.href;
+                if (currentUrl === lastUrl) return;
+
+                lastUrl = currentUrl;
+
+                cleanupAll();
+
+                runOptimizations();
+            }, 200);
+        }
+
+        document.addEventListener('yt-navigate-finish', handleSPANavigation);
+        document.addEventListener('yt-page-data-fetched', handleSPANavigation);
+
+        const urlObserver = new MutationObserver(() => {
+            handleSPANavigation();
         });
 
-        Logger.log('Open YouTube Optimizer fully initialized');
+        urlObserver.observe(document.documentElement, {
+            childList: true,
+            subtree: true
+        });
 
-        // Статистика
-        setTimeout(() => {
-            const appliedCount = Object.values(CONFIG).filter(v => v === true).length;
-            Logger.log(`Applied ${appliedCount} optimizations out of ${Object.keys(CONFIG).length}`);
-        }, 3000);
+        // ------------------------------------------------------------------------
+        // Global cleanup
+        // ------------------------------------------------------------------------
+        function globalCleanup() {
+            cleanupAll();
+            urlObserver.disconnect();
+
+            if (window.__ytOptimizerCleanupUI) {
+                try {
+                    window.__ytOptimizerCleanupUI();
+                } catch (e) {}
+            }
+
+            window.ytOptimizerUI = null;
+        }
+
+        window.addEventListener('beforeunload', globalCleanup, { once: true });
+        window.addEventListener('pagehide', globalCleanup, { once: true });
     }
 
     // ============================================================================
-    // STARTUP LOGIC
+    // STARTUP
     // ============================================================================
+    function start() {
+        initialize();
+    }
+
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
-            setTimeout(initialize, 100);
-        });
+            setTimeout(start, 50);
+        }, { once: true });
     } else {
-        setTimeout(initialize, 100);
+        setTimeout(start, 50);
     }
-
-    // Обработка навигации в SPA (YouTube)
-    let lastUrl = location.href;
-    new MutationObserver(() => {
-        const url = location.href;
-        if (url !== lastUrl) {
-            lastUrl = url;
-            setTimeout(() => {
-                safeExecute(cleanUI, 'SPA Navigation Cleanup');
-                safeExecute(optimizePlayer, 'SPA Navigation Player Opt');
-            }, 1000);
-        }
-    }).observe(document.body, { childList: true, subtree: true });
 
 })();
