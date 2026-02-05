@@ -72,7 +72,7 @@ _UI Screenshot (RU ver.)_
 
 **Method 1 (Recommended):**
 - Install the script 
--  it to the userscript manager
+- Drag it to the userscript manager
 - Confirm and install
 
 **Method 2 (Manual):**
