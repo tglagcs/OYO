@@ -6,6 +6,7 @@
 🧱 Injects a single persistent `<style>` block instead of patching elements one by one  
 🛡️ Keeps the video player stable by explicitly restoring its default animation/transition behavior  
 🖱️ Preserves minimal visual feedback on buttons (opacity only) for usability
+
 🔧 How it works:
 - Defines a CSS rule set that:
     - Globally disables `animation` and `transition` inside main YouTube app containers
@@ -15,6 +16,7 @@
 - On init:
     - Creates (or reuses) a `<style>` tag with id `yt-optimizer-animations`
     - Injects the CSS only if it changed (avoids unnecessary DOM writes)
+    
 🚀 Result:
 - Instant UI responses (no animation queues)
 - Less layout/paint/composite work for the browser
@@ -28,6 +30,7 @@
 🧹 Tracks active timers in a `Map` to allow clean cancellation and avoid leaks  
 ♻️ Preserves original behavior for short or non-standard calls  
 🕵️ Masks the patch by keeping original `.toString()` outputs (anti-detection)
+
 🔧 How it works:
 - Saves original:
     - `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`
@@ -45,6 +48,7 @@
     - Marks tasks as cancelled
     - Removes them from the map
 - Restores native-looking `.toString()` to avoid breaking sites that inspect functions
+
 🚀 Result:
 - Drastically fewer timer wakeups in background and idle states
 - Lower CPU usage on heavy pages (like YouTube SPA)
@@ -58,6 +62,7 @@
 🧠 Prevents duplicate observers using a per-image flag (`__ytOptimizerObserved`)  
 ♻️ Uses a single shared `IntersectionObserver` for all images to reduce overhead  
 🧬 Uses `MutationObserver` to automatically catch images added dynamically (infinite scroll, SPA navigation)
+
 🔧 How it works:
 - Creates one `IntersectionObserver` with a preload margin (`rootMargin: 200px`)
 - When an image becomes visible:
@@ -70,6 +75,7 @@
 - Then:
     - Watches DOM mutations
     - Automatically attaches observer to newly added images
+    
 🚀 Result:
 - Images load only when actually needed
 - Less network + decode work offscreen
@@ -83,6 +89,7 @@
 ♻️ Uses `WeakMap` to store per-element state without blocking garbage collection  
 🖼️ Hooks into `yt-img-shadow` to override thumbnail handling  
 ⚡ Manually injects the best available thumbnail and bypasses native update logic
+
 🔧 How it works:
 - Overrides `Element.prototype.usePatchedLifecycles` with custom getter/setter
 - Stores per-element control flags in a `WeakMap`
@@ -95,6 +102,7 @@
     - Picks the highest-resolution thumbnail
     - Schedules a microtask to force `img.src` to the optimal URL
     - Disables native lifecycle updates for that component
+    
 🚀 Result:
 - Fewer memory leaks
 - Fewer unnecessary component re-creations
@@ -108,6 +116,7 @@
 🎯 Selects the best available thumbnail (highest resolution) from the provided list  
 ⚡ Manually forces the `<img>` element to use the optimal URL  
 🧹 Prevents repeated internal updates by disabling component lifecycle handling
+
 🔧 How it works:
 - Triggers only when:
     - The component is being enabled (`nv` is truthy)
@@ -120,6 +129,7 @@
     - Schedules a microtask via `Promise.resolve().then(...)` to:
         - Re-check the thumbnail list (in case it updated)
         - Force `cnt.$.img.src` to the best URL
+        
 🚀 Result:
 - Always displays the highest-quality available thumbnail
 - Fewer internal Polymer updates and reflows
@@ -135,6 +145,7 @@
 🎯 Focuses the layout on the video and core content  
 🖌️ Applies small CSS tweaks to clean up spacing and borders  
 🙈 Removes minor visual noise (placeholders, icons, region badges, etc.)
+
 🔧 How it works:
 - When `CONFIG.simplifyUI` is enabled:
     - Injects CSS rules that `display: none` a large set of UI elements, including:
@@ -148,6 +159,7 @@
         - Adjusts bottom padding for the watch metadata block
         - Hides search input placeholder text to reduce visual noise
 - All changes are done via CSS rules, without touching YouTube’s JS logic
+
 🚀 Result:
 - Much cleaner and more focused watch page
 - Fewer distractions around the video
@@ -161,6 +173,7 @@
 🧱 Targets top bars, pivot bars, filter bars, and app background layers  
 🖌️ Forces consistent flat backgrounds using YouTube’s base theme color  
 🧠 Avoids expensive blur and backdrop compositing operations
+
 🔧 How it works:
 - When `CONFIG.disableBlurEffects` is enabled:
     - Injects CSS rules for elements using the `frosted-glass` style and main background layers
@@ -171,6 +184,7 @@
     - Replaces translucent/blurred backgrounds with:
         - `background: var(--yt-spec-base-background)`
 - All changes are done purely via CSS, no JS hooks involved
+
 🚀 Result:
 - Less GPU and compositor workload
 - Fewer expensive blur passes and repaints
@@ -183,12 +197,14 @@
 ⚡ Removes expensive shadow rendering from all elements inside `ytd-app`  
 🧱 Forces a fully flat UI style via a single global CSS rule  
 🧠 Reduces GPU/compositor and paint workload caused by shadow effects
+
 🔧 How it works:
 - When `CONFIG.disableShadows` is enabled:
     - Injects one global CSS rule:
         - `ytd-app * { box-shadow: none !important; text-shadow: none !important; }`
     - This overrides any existing shadow styles in the YouTube interface
 - No DOM manipulation or JS hooks — pure CSS override
+
 🚀 Result:
 - Less GPU and paint overhead
 - Fewer expensive visual effects per frame
@@ -202,6 +218,7 @@
 🧠 Prevents YouTube from injecting “(N)” unread counts into `document.title`  
 🛡️ Hooks into `Document.prototype.title` while preserving native behavior  
 ⚡ Avoids repeated patching with a one-time guard flag
+
 🔧 How it works:
 - When `CONFIG.disableNotifications` is enabled:
     - Injects CSS to hide:
@@ -212,6 +229,7 @@
         - Forwards the cleaned title to the original setter
 - Uses `__ytTitlePatched` flag to ensure the hook is applied only once
 - Keeps original getter/setter behavior intact, only sanitizes the value
+
 🚀 Result:
 - No notification bell in the UI
 - No unread counter spam in the tab title
@@ -227,6 +245,7 @@
 📵 Filters out Shorts shelves and rich promo sections via a shared base selector list  
 🧱 Cleans up layout spacing after ad blocks are removed  
 🖌️ Applies all changes purely via CSS (no network or JS request blocking)
+
 🔧 How it works:
 - Defines a base list of selectors (`BASE_HIDE_SELECTORS`) for:
     - Shorts shelves
@@ -247,6 +266,7 @@
         - Mobile promoted and sparkles renderers
         - Plus everything from `BASE_HIDE_SELECTORS`
 - Uses only CSS hiding, so YouTube logic remains untouched
+
 🚀 Result:
 - No visible ads or sponsored blocks in the UI
 - Cleaner and more compact layouts
@@ -260,6 +280,7 @@
 🧱 Filters out Shorts-related sections from guides, sidebars, and feeds  
 🖌️ Reuses shared base selectors to also remove Shorts-like promo blocks  
 ⚙️ Implemented purely via CSS hiding rules
+
 🔧 How it works:
 - When `CONFIG.removeShorts` is enabled:
     - Injects CSS rules that hide:
@@ -269,6 +290,7 @@
         - Shorts entry in the mini-guide
         - Plus everything covered by `BASE_HIDE_SELECTORS` (shelves/sections commonly used for Shorts and promos)
 - Does not touch YouTube’s JS logic or routing — only removes UI visibility
+
 🚀 Result:
 - No Shorts in the feed, sidebars, or navigation
 - Cleaner homepage and watch pages
@@ -281,6 +303,7 @@
 🧹 Hides the main comments container, threads, and teaser blocks  
 🧱 Eliminates comment-related DOM sections from rendering and layout  
 🖌️ Implemented purely via CSS hiding rules (no JS logic changes)
+
 🔧 How it works:
 - When `CONFIG.removeComments` is enabled:
     - Injects CSS rules that hide:
@@ -290,6 +313,7 @@
         - The comment teaser section
 - Uses only `display: none`-style hiding via the shared `hide()` helper
 - Does not interfere with YouTube’s internal comment loading logic — just removes it from view
+
 🚀 Result:
 - No comments visible under videos
 - Cleaner and more compact watch pages
@@ -302,12 +326,14 @@
 🧹 Hides both the sidebar entry and direct trending links  
 🧱 Prevents the Trending feed from being accessed via the UI  
 🖌️ Implemented purely via CSS hiding rules
+
 🔧 How it works:
 - When `CONFIG.removeTrending` is enabled:
     - Injects CSS rules that hide:
         - Any link pointing to `/feed/trending`
         - The guide entry renderer whose title contains “Trending”
 - Does not block navigation at the routing level — only removes the UI entry points
+
 🚀 Result:
 - No Trending entry in the sidebar or menus
 - Less algorithm-driven distraction
@@ -320,6 +346,7 @@
 🧹 Hides the live chat frame, containers, and embedded iframe  
 🧱 Eliminates chat-related UI from the watch page layout  
 🖌️ Implemented purely via CSS hiding rules
+
 🔧 How it works:
 - When `CONFIG.removeLiveChat` is enabled:
     - Injects CSS rules that hide:
@@ -341,6 +368,7 @@
 🧹 Removes links to Courses, Podcasts, Premium, YouTube Music, and merch shelves  
 🧱 Cleans up the guide/sidebar from promo-heavy elements  
 🖌️ Uses CSS to toggle visibility based on `CONFIG.removePromo`
+
 🔧 How it works:
 - Injects CSS rules that conditionally hide or show:
     - Guide entries linking to `/feed/courses_destination` and `/podcasts`
@@ -350,6 +378,7 @@
 - When `CONFIG.removePromo` is `true`, all targeted elements are set to `display: none !important`
 - When `false`, visibility is restored to their default layout (`block` or `flex` as appropriate)
 - Purely CSS-based, does not interfere with YouTube’s internal logic
+
 🚀 Result:
 - Less promo clutter in the sidebar and homepage
 - Cleaner, more focused navigation
@@ -364,6 +393,7 @@
 🧹 Prevents unwanted playback of introductory/trailer videos  
 🧱 Targets only `ytd-channel-video-player-renderer` to avoid affecting regular video playback  
 🖌️ Uses an event listener hook to pause trailers immediately when they start
+
 🔧 How it works:
 - When `CONFIG.disableAutoplay` is enabled:
     - Adds a `play` event listener on the `document` (capturing phase)
@@ -372,6 +402,7 @@
         - Sets `video.autoplay = false`
         - Pauses the video immediately
 - Uses `__trailerAutoplayHooked` to ensure the hook is applied only once
+
 🚀 Result:
 - Channel trailer videos do not autoplay when opening a channel
 - Avoids unexpected sound/video distractions
@@ -383,6 +414,7 @@
 🧹 Forces a specific resolution regardless of YouTube’s automatic selection  
 🧱 Integrates with the settings UI: enables/disables the `maxQuality` dropdown based on toggle  
 ⚙️ Hooks into the video player via JS to apply the target quality reliably
+
 🔧 How it works:
 - When `CONFIG.limitVideoQuality` is enabled:
     - Maps human-readable resolutions (`360p`, `720p`, etc.) to YouTube’s internal quality codes (`medium`, `hd720`, etc.)
@@ -397,6 +429,7 @@
 - UI integration:
     - `limitVideoQuality` toggle enables/disables `maxQuality` select
     - Select options: `360p`, `480p`, `720p (HD)`, `1080p (Full HD)`, `1440p (2K)`, `2160p (4K)`
+    
 🚀 Result:
 - Videos never exceed the selected maximum quality
 - Reduces bandwidth usage for users with slow or limited connections
@@ -409,6 +442,7 @@
 🧹 Eliminates visual fade effects that can obscure video edges  
 ⚡ Reduces unnecessary CSS rendering and repaint work  
 🖌️ Implemented purely via CSS overrides
+
 🔧 How it works:
 - When `CONFIG.disablePlayerGradients` is enabled:
     - Injects CSS rules to hide the player gradient elements:
@@ -416,6 +450,7 @@
         - `.ytp-gradient-bottom`
     - Sets `height: 0 !important` and `padding: 0 !important` to fully collapse the gradient bars
 - No JavaScript hooks or modifications to player logic
+
 🚀 Result:
 - Cleaner, unobstructed view of the video
 - Less visual distraction from gradient overlays
@@ -426,12 +461,14 @@
 💧 Removes YouTube player watermarks, annotations, and branding overlays  
 🧹 Hides visual distractions such as channel logos, clickable annotations, and interactive video elements  
 🖌️ Implemented purely via CSS hiding rules
+
 🔧 How it works:
 - When `CONFIG.disablePlayerWatermarkAndAnnotations` is enabled:
     - Injects CSS rules to hide:
         - `.ytp-watermark` — YouTube branding watermark
         - `.annotation`, `.iv-branding`, `.video-annotations` — in-video annotations and overlays
 - No changes to player logic or video playback
+
 🚀 Result:
 - Cleaner, unobstructed video display
 - Removes distractions caused by annotations and branding
@@ -442,6 +479,7 @@
 📝 Removes in-video info cards, end-screen elements, and teaser cards  
 🧹 Hides video description info cards, clickable end cards, and card teasers  
 🖌️ Implemented purely via CSS hiding rules
+
 🔧 How it works:
 - When `CONFIG.removeInfoAndPlayerCards` is enabled:
     - Injects CSS rules to hide:
@@ -449,6 +487,7 @@
         - `.ytp-ce-element` — end-screen elements
         - `.ytp-cards-teaser` — teaser overlays for upcoming cards
 - No changes to video playback or YouTube’s internal card logic
+
 🚀 Result:
 - Cleaner video playback with no distracting cards
 - Less visual clutter on the player and under the video
@@ -459,12 +498,14 @@
 🏁 Removes YouTube video end screens and suggested video overlays  
 🧹 Hides all end-screen elements that appear when a video finishes  
 🖌️ Implemented purely via CSS hiding rules
+
 🔧 How it works:
 - When `CONFIG.removeEndScreen` is enabled:
     - Injects CSS rules to hide:
         - `.html5-endscreen` — container for end-screen content
         - `.ytp-endscreen-content` — the actual video suggestions and overlays
 - No changes to video playback logic — only UI visibility is affected
+
 🚀 Result:
 - No suggested video pop-ups after a video ends
 - Cleaner viewing experience with uninterrupted focus
