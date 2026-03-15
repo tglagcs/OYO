@@ -1,4 +1,4 @@
-# ⚡ Open YouTube Optimizer 2.0
+# ⚡ Open YouTube Optimizer 3.0
 
 ### Fast. Clean. Under Your Control.
 
@@ -103,7 +103,7 @@ If YouTube breaks something - just report it.
 
 ---
 ## 🙏 Acknowledgments
-- Special thanks to: [**RetroMac11 (Joey JTS)**](https://greasyfork.org/en/scripts/503468-youtube-web-tweaks-advanced-edition), [**CY Fung**](https://greasyfork.org/ru/scripts/431573-youtube-cpu-tamer-by-animationframe), **DeepSeek** 🐳 & **ChatGPT 🤖**
+- Special thanks to: [**Diforz**](https://github.com/Diforz), [**RetroMac11 (Joey JTS)**](https://greasyfork.org/en/scripts/503468-youtube-web-tweaks-advanced-edition), [**CY Fung**](https://greasyfork.org/ru/scripts/431573-youtube-cpu-tamer-by-animationframe), **DeepSeek** 🐳 & **ChatGPT 🤖**
 
 ---
 ## 👤 Author - lag_cs
