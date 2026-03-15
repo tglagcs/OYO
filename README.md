@@ -61,7 +61,6 @@ Focus remains the same:
 
 ---
 ## 📸 Screenshots
-*(обнови ссылки на актуальные скриншоты 3.0, если они уже загружены)*
 
 ![EN](https://raw.githubusercontent.com/tglagcs/OYO/refs/heads/main/imgs/EN_3.0.png)  
 _UI Screenshot (EN ver. — 3.0 settings panel)_
