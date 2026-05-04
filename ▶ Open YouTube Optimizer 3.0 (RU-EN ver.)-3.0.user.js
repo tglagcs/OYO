@@ -216,7 +216,6 @@
             'ytd-reel-shelf-renderer',
             'ytd-rich-shelf-renderer',
             'ytd-rich-section-renderer',
-            'ytd-watch-next-secondary-results-renderer',
             'ytm-rich-shelf-renderer',
             'ytm-search ytm-shelf-renderer',
             'ytm-reel-shelf-renderer',
