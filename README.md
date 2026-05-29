@@ -120,7 +120,4 @@ If YouTube updates break something — please report with details.
 - Special thanks to: [**Diforz**](https://github.com/Diforz), [**RetroMac11 (Joey JTS)**](https://greasyfork.org/en/scripts/503468-youtube-web-tweaks-advanced-edition), [**CY Fung**](https://greasyfork.org/ru/scripts/431573-youtube-cpu-tamer-by-animationframe), **DeepSeek** 🐳 & **ChatGPT 🤖**
 
 ---
-## 👤 Author Telegram - [**lag_cs**](https://t.me/lag_cs)
-
----
 **💬 "*Enjoy a faster, cleaner YouTube experience!*"**
