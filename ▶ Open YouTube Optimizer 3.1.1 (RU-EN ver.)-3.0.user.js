@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         ▶ Open YouTube Optimizer 3.1.0 (RU/EN ver.)
-// @name:ru      ▶ Open YouTube Optimizer 3.1.0 (RU/EN вер.)
-// @version      3.1.0
+// @name         ▶ Open YouTube Optimizer 3.1.1 (RU/EN ver.)
+// @name:ru      ▶ Open YouTube Optimizer 3.1.1 (RU/EN вер.)
+// @version      3.1.1
 // @description  Advanced script to improve YouTube performance and simplify interface (with search, change indicators, color theme switcher, per-option unsaved warning, preview on color change)
 // @description:ru Усовершенствованный скрипт для повышения производительности и упрощения интерфейса YouTube (с поиском, индикаторами изменений, переключателем цветовой темы, предпросмотром цвета, всплывающими подсказками)
 // @author       | github.com/tglagcs | github.com/Diforz |
@@ -2263,7 +2263,7 @@
 
             const versionEl = this.modal.querySelector('.ytoo-version');
             if (versionEl) {
-                versionEl.textContent = this.currentLanguage === 'ru' ? 'Версия 3.1.0 (RU/EN)' : 'Version 3.1.0 (RU/EN)';
+                versionEl.textContent = this.currentLanguage === 'ru' ? 'Версия 3.1.1 (RU/EN)' : 'Version 3.1.1 (RU/EN)';
             }
 
             const applyBtn = this.modal.querySelector('#yt-optimizer-apply');
@@ -2664,7 +2664,7 @@
 
             const version = document.createElement('p');
             version.className = 'ytoo-version';
-            version.textContent = this.currentLanguage === 'ru' ? 'Версия 3.1.0 (RU/EN)' : 'Version 3.1.0 (RU/EN)';
+            version.textContent = this.currentLanguage === 'ru' ? 'Версия 3.1.1 (RU/EN)' : 'Version 3.1.1 (RU/EN)';
 
             titleContainer.appendChild(title);
             titleContainer.appendChild(version);
@@ -2894,13 +2894,8 @@
         document.addEventListener('yt-navigate-finish', handleSPANavigation);
         document.addEventListener('yt-page-data-fetched', handleSPANavigation);
 
-        const unregisterUrlObserver = registerDomObserver(() => {
-            handleSPANavigation();
-        });
-
         function globalCleanup() {
             cleanupAll();
-            unregisterUrlObserver();
 
             window.ytOptimizerUI = null;
         }
