@@ -1,4 +1,4 @@
-# ⚡ Open YouTube Optimizer 3.1.0
+# ⚡ Open YouTube Optimizer 3.1.1
 ### Fast. Clean. Under Your Control.
 > **Lightning-fast YouTube experience without distractions**  
 > A powerful userscript that removes bloat, optimizes performance, and gives you full control over your YouTube interface.
