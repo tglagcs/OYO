@@ -1,23 +1,22 @@
 // ==UserScript==
-// @name         ▶ Open YouTube Optimizer 3.0 (RU/EN ver.)
-// @name:ru      ▶ Open YouTube Optimizer 3.0 (RU/EN вер.)
-// @version      3.0
+// @name         ▶ Open YouTube Optimizer 3.1.0 (RU/EN ver.)
+// @name:ru      ▶ Open YouTube Optimizer 3.1.0 (RU/EN вер.)
+// @version      3.1.0
 // @description  Advanced script to improve YouTube performance and simplify interface (with search, change indicators, color theme switcher, per-option unsaved warning, preview on color change)
 // @description:ru Усовершенствованный скрипт для повышения производительности и упрощения интерфейса YouTube (с поиском, индикаторами изменений, переключателем цветовой темы, предпросмотром цвета, всплывающими подсказками)
-// @author       | tg: @lag_cs | github: tglagcs | (адаптация и фикс автоплея: DeepSeek)
+// @author       | github.com/tglagcs | github.com/Diforz |
 // @match        https://*.youtube.com/*
 // @match        https://*.youtube-nocookie.com/*
 // @exclude      /^https?:\/\/\S+\.(txt|png|jpg|jpeg|gif|xml|svg|manifest|log|ini)[^\/]*$/
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
+// @grant        GM_unregisterMenuCommand
 // @run-at       document-start
 // @grant        unsafeWindow
 // @license      MIT
 // @icon         https://raw.githubusercontent.com/tglagcs/OYO/main/imgs/OYO%20ICO.png
-// @namespace https://greasyfork.org/users/1561081
-// @downloadURL https://update.greasyfork.org/scripts/562908/%E2%96%B6%20Open%20YouTube%20Optimizer%2020%20%28EN%20ver%29.user.js
-// @updateURL https://update.greasyfork.org/scripts/562908/%E2%96%B6%20Open%20YouTube%20Optimizer%2020%20%28EN%20ver%29.meta.js
+// @namespace    https://greasyfork.org/users/1561081
 // ==/UserScript==
 
 (function () {
@@ -137,7 +136,9 @@
             GM_setValue('ytOptimizerConfig', configStr);
 
             return true;
-        } catch (e) {}
+        } catch (e) {
+            return false;
+        }
     }
 
     if (window.__ytOptimizerProInjected) return;
@@ -260,6 +261,8 @@
                 '#clarify-box',
                 'statement-banner-style-type-compact',
                 'ytm-promoted-sparkles-web-renderer',
+                '.ytp-ad-module',
+                '.video-ads',
                 BASE_HIDE_SELECTORS
             ].join(',')));
         }
@@ -270,6 +273,8 @@
                 '#shorts-container',
                 'ytd-guide-entry-renderer[title="Shorts"]',
                 '.ytd-mini-guide-entry-renderer[href="/shorts/"]',
+                'ytd-reel-item-renderer',
+                'a[href*="/shorts/"]',
                 BASE_HIDE_SELECTORS
             ].join(',')));
         }
@@ -305,6 +310,7 @@
 
         if (CONFIG.removeComments) {
             rules.push(hide([
+                '#comments',
                 '#comments.style-scope.ytd-watch-flexy',
                 'ytd-comments',
                 'ytd-comment-thread-renderer',
@@ -444,6 +450,53 @@
         if (style.textContent !== ANIMATIONS_CSS) {
             style.textContent = ANIMATIONS_CSS;
         }
+    }
+
+    // ============================================================================
+    // SHARED DOM OBSERVER
+    // ============================================================================
+    // Single MutationObserver shared by every feature that needs to react to
+    // DOM changes, instead of each feature creating its own observer on
+    // document.body/documentElement.
+    const sharedObserverCallbacks = new Set();
+    let sharedObserver = null;
+    let sharedObserverStarted = false;
+
+    function startSharedObserver() {
+        if (sharedObserverStarted || !document.documentElement) return;
+
+        sharedObserver.observe(document.documentElement, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['aria-checked']
+        });
+        sharedObserverStarted = true;
+    }
+
+    function registerDomObserver(callback) {
+        sharedObserverCallbacks.add(callback);
+
+        if (!sharedObserver) {
+            sharedObserver = new MutationObserver((mutations) => {
+                for (const cb of sharedObserverCallbacks) {
+                    try {
+                        cb(mutations);
+                    } catch (e) {}
+                }
+            });
+        }
+
+        if (!sharedObserverStarted) {
+            startSharedObserver();
+            if (!sharedObserverStarted) {
+                document.addEventListener('DOMContentLoaded', startSharedObserver, { once: true });
+            }
+        }
+
+        return () => {
+            sharedObserverCallbacks.delete(callback);
+        };
     }
 
     // ============================================================================
@@ -691,7 +744,7 @@
 
         let protectionActive = true;
         let userInteracted = false;
-        let observer = null;
+        let unregisterObserver = null;
         let interval = null;
         let timeout = null;
 
@@ -699,9 +752,9 @@
             if (!protectionActive) return;
             protectionActive = false;
             userInteracted = true;
-            if (observer) {
-                observer.disconnect();
-                observer = null;
+            if (unregisterObserver) {
+                unregisterObserver();
+                unregisterObserver = null;
             }
             if (interval) {
                 clearInterval(interval);
@@ -711,7 +764,6 @@
                 clearTimeout(timeout);
                 timeout = null;
             }
-            console.log('OYO: Защита отключена (пользователь взаимодействовал с плеером)');
         }
 
         function pauseIfAutoPlaying() {
@@ -719,7 +771,6 @@
             const video = document.querySelector('video');
             if (video && !video.paused) {
                 video.pause();
-                console.log('OYO: Автозапуск заблокирован');
                 return true;
             }
             return false;
@@ -727,6 +778,11 @@
 
         function setupClickListener() {
             document.addEventListener('click', function onClick(e) {
+                // Ignore synthetic clicks (e.g. the autoplay-disabler's
+                // btn.click() on .ytp-autonav-toggle-button), only real user
+                // clicks should lift the pause protection.
+                if (!e.isTrusted) return;
+
                 const isPlayerClick = e.target.closest('.html5-video-player, .ytp-play-button, video, .ytp-player-content');
                 if (isPlayerClick && protectionActive && !userInteracted) {
                     userInteracted = true;
@@ -738,12 +794,9 @@
         pauseIfAutoPlaying();
         setupClickListener();
 
-        observer = new MutationObserver(function() {
+        unregisterObserver = registerDomObserver(() => {
             pauseIfAutoPlaying();
         });
-        if (document.body) {
-            observer.observe(document.body, { childList: true, subtree: true });
-        }
 
         interval = setInterval(function() {
             if (!protectionActive || userInteracted) {
@@ -756,7 +809,6 @@
 
         timeout = setTimeout(function() {
             if (protectionActive && !userInteracted) {
-                console.log('OYO: Защита отключена по таймауту (15 сек)');
                 disableProtection();
             }
         }, 15000);
@@ -774,236 +826,31 @@
 
         const originalSetTimeout = window.setTimeout;
         const originalSetInterval = window.setInterval;
-        const originalClearTimeout = window.clearTimeout;
-        const originalClearInterval = window.clearInterval;
-
-        const activeTasks = new Map();
-
-        if (!window.__ytTimersCleanupAdded) {
-            const cleanup = () => activeTasks.clear();
-            window.addEventListener('beforeunload', cleanup);
-            window.addEventListener('pagehide', cleanup);
-            window.__ytTimersCleanupAdded = true;
-        }
-
-        function now() {
-            return performance.now();
-        }
 
         function wrapTimer(originalFn, minDelay, hardMinDelay) {
             return function (callback, delay, ...args) {
-
                 if (typeof callback !== 'function' || typeof delay !== 'number' || delay < minDelay) {
                     return originalFn(callback, delay, ...args);
                 }
 
                 const finalDelay = delay < hardMinDelay ? hardMinDelay : delay;
-
-                const task = {
-                    cb: callback,
-                    args,
-                    lastRun: 0,
-                    cancelled: false
-                };
-
-                const id = originalFn(function tick() {
-                    if (task.cancelled) return;
-
-                    const t = now();
-
-                    if (t - task.lastRun >= finalDelay - 5) {
-                        task.lastRun = t;
-                        try {
-                            task.cb(...task.args);
-                        } catch (e) {
-                            console.error(e);
-                        }
-                    }
-                }, finalDelay);
-
-                activeTasks.set(id, task);
-                return id;
+                return originalFn(callback, finalDelay, ...args);
             };
         }
 
         window.setInterval = wrapTimer(originalSetInterval, 1000, 2000);
         window.setTimeout = wrapTimer(originalSetTimeout, 200, 1000);
 
-        window.clearInterval = function (id) {
-            const task = activeTasks.get(id);
-            if (task) {
-                task.cancelled = true;
-                activeTasks.delete(id);
-            }
-            return originalClearInterval(id);
-        };
-
-        window.clearTimeout = function (id) {
-            const task = activeTasks.get(id);
-            if (task) {
-                task.cancelled = true;
-                activeTasks.delete(id);
-            }
-            return originalClearTimeout(id);
-        };
-
         try {
             window.setTimeout.toString = originalSetTimeout.toString.bind(originalSetTimeout);
             window.setInterval.toString = originalSetInterval.toString.bind(originalSetInterval);
-            window.clearTimeout.toString = originalClearTimeout.toString.bind(originalClearTimeout);
-            window.clearInterval.toString = originalClearInterval.toString.bind(originalClearInterval);
         } catch (e) {}
-    }
-
-    // ============================================================================
-    // UI CLEANER
-    // ============================================================================
-
-    const BASE_HIDE_SELECTORS = {
-        shorts: [
-            '[is-shorts]',
-            'ytd-reel-shelf-renderer',
-            'ytd-reel-item-renderer',
-            'a[href*="/shorts/"]'
-        ],
-        ads: [
-            'ytd-display-ad-renderer',
-            '.ytp-ad-module',
-            '.video-ads'
-        ],
-        sidebar: [
-            '#secondary',
-            '#related',
-            'ytd-watch-next-secondary-results-renderer'
-        ],
-        comments: [
-            '#comments',
-            'ytd-comments'
-        ]
-    };
-
-    let __uiCleanerInitialized = false;
-
-    function cleanUI() {
-        if (!CONFIG.simplifyUI) return;
-        if (__uiCleanerInitialized) return;
-        __uiCleanerInitialized = true;
-
-        let debounceTimer = null;
-        let observer = null;
-        let mutationCount = 0;
-
-        const MAX_MUTATIONS = 2000;
-        const DEBOUNCE_DELAY = 250;
-
-        let combinedSelector = '';
-
-        function rebuildSelector() {
-            const parts = [];
-
-            if (CONFIG.removeShorts) parts.push(...BASE_HIDE_SELECTORS.shorts);
-            if (CONFIG.removeAds) parts.push(...BASE_HIDE_SELECTORS.ads);
-            if (CONFIG.simplifyUI) parts.push(...BASE_HIDE_SELECTORS.sidebar);
-            if (CONFIG.removeComments) parts.push(...BASE_HIDE_SELECTORS.comments);
-
-            combinedSelector = parts.join(',');
-        }
-
-        function hideElements() {
-            if (!document.body || !combinedSelector) return 0;
-
-            let nodes;
-            try {
-                nodes = document.querySelectorAll(combinedSelector);
-            } catch {
-                return 0;
-            }
-
-            let hiddenCount = 0;
-
-            for (let i = 0; i < nodes.length; i++) {
-                const el = nodes[i];
-                if (!el || el.__ytOptimizerHidden) continue;
-
-                el.style.display = 'none';
-                el.__ytOptimizerHidden = true;
-                hiddenCount++;
-            }
-
-            return hiddenCount;
-        }
-
-        function scheduleCleanup(delay = DEBOUNCE_DELAY) {
-            if (debounceTimer) clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(hideElements, delay);
-        }
-
-        observer = new MutationObserver((mutations) => {
-            mutationCount++;
-            if (mutationCount > MAX_MUTATIONS) {
-                observer.disconnect();
-                return;
-            }
-
-            for (const m of mutations) {
-                if (m.type === 'childList' && m.addedNodes.length) {
-                    scheduleCleanup();
-                    break;
-                }
-            }
-        });
-
-        function startObserver() {
-            if (!document.body) return;
-            observer.observe(document.body, { childList: true, subtree: true });
-        }
-
-        let navDebounce = null;
-
-        function onSPANavigation() {
-            mutationCount = 0;
-            rebuildSelector();
-            if (navDebounce) clearTimeout(navDebounce);
-            navDebounce = setTimeout(hideElements, 400);
-        }
-
-        document.addEventListener('yt-navigate-finish', onSPANavigation);
-        document.addEventListener('yt-page-data-fetched', onSPANavigation);
-
-        function cleanup() {
-            if (debounceTimer) clearTimeout(debounceTimer);
-            if (navDebounce) clearTimeout(navDebounce);
-            if (observer) observer.disconnect();
-
-            document.removeEventListener('yt-navigate-finish', onSPANavigation);
-            document.removeEventListener('yt-page-data-fetched', onSPANavigation);
-        }
-
-        window.addEventListener('beforeunload', cleanup);
-        window.addEventListener('pagehide', cleanup);
-
-        function runInitial() {
-            setTimeout(hideElements, 500);
-        }
-
-        rebuildSelector();
-
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', runInitial, { once: true });
-        } else {
-            runInitial();
-        }
-
-        startObserver();
-
-        window.__ytOptimizerCleanupUI = cleanup;
     }
 
     // ============================================================================
     // VIDEO QUALITY LIMITER
     // ============================================================================
     let __qualityLimiterInitialized = false;
-    let __qualityMenuObserver = null;
 
     function setupQualityLimiter() {
         if (!CONFIG.limitVideoQuality) return;
@@ -1028,7 +875,7 @@
         const targetMax = qualityMap[targetMaxStr];
         if (!targetMin || !targetMax) return;
 
-        const qualityOrder = ['144p', '240p', '360p', '480p', '720p', '1080p', '1440p', '2160p'];
+        const qualityOrder = ['144p', '240p', '360p', '480p', '720p', '1080p', '1440p', '2160p', '4320p'];
         const minIndex = qualityOrder.indexOf(targetMinStr);
         const maxIndex = qualityOrder.indexOf(targetMaxStr);
 
@@ -1074,12 +921,9 @@
 
         tryApplyRange();
 
-        __qualityMenuObserver = new MutationObserver(() => {
+        registerDomObserver(() => {
             blockOutOfRangeMenuItems();
         });
-        if (document.body) {
-            __qualityMenuObserver.observe(document.body, { childList: true, subtree: true });
-        }
 
         document.addEventListener('yt-navigate-finish', () => {
             setTimeout(() => {
@@ -1108,6 +952,8 @@
             if (__autoplayDisablerInitialized) return;
             __autoplayDisablerInitialized = true;
 
+            let checkScheduled = false;
+
             function disableAutoplayIfNeeded() {
                 const btn = document.querySelector('.ytp-autonav-toggle-button');
                 if (!btn) return;
@@ -1117,32 +963,36 @@
                 }
             }
 
-            const observer = new MutationObserver((mutations) => {
+            // Run the actual check (and click) on a macrotask, never directly
+            // from the MutationObserver callback. Clicking the toggle can
+            // itself trigger DOM/attribute mutations matching this observer,
+            // and calling it synchronously can chain mutation -> click ->
+            // mutation -> click as microtasks, freezing the page.
+            function scheduleCheck() {
+                if (checkScheduled) return;
+                checkScheduled = true;
+                setTimeout(() => {
+                    checkScheduled = false;
+                    disableAutoplayIfNeeded();
+                }, 50);
+            }
+
+            scheduleCheck();
+
+            registerDomObserver((mutations) => {
                 for (const mutation of mutations) {
                     if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-                        disableAutoplayIfNeeded();
+                        scheduleCheck();
+                        break;
                     }
                     if (mutation.type === 'attributes' && mutation.attributeName === 'aria-checked') {
                         if (mutation.target.classList.contains('ytp-autonav-toggle-button')) {
-                            disableAutoplayIfNeeded();
+                            scheduleCheck();
+                            break;
                         }
                     }
                 }
             });
-
-            function start() {
-                disableAutoplayIfNeeded();
-                if (document.body) {
-                    observer.observe(document.body, {
-                        childList: true,
-                        subtree: true,
-                        attributes: true,
-                        attributeFilter: ['aria-checked']
-                    });
-                }
-            }
-
-            start();
 
             document.addEventListener('yt-navigate-finish', () => {
                 setTimeout(disableAutoplayIfNeeded, 300);
@@ -1228,6 +1078,80 @@
     }
 
     // ============================================================================
+    // SETTINGS UI - LOCALIZATION DATA
+    // ============================================================================
+    const CATEGORY_IDS = ['performance', 'appearance', 'blocking', 'player', 'settings'];
+
+    const CATEGORY_TITLES = {
+        performance: { en: '⚡ Performance', ru: '⚡ Производительность' },
+        appearance: { en: '🎨 Appearance & Layout', ru: '🎨 Внешний вид и макет' },
+        blocking: { en: '🚫 Content Blocking', ru: '🚫 Блокировка контента' },
+        player: { en: '🎬 Player', ru: '🎬 Плеер' },
+        settings: { en: '⚙️ OYO Settings', ru: '⚙️ Настройки OYO' }
+    };
+
+    const QUALITY_OPTIONS = [
+        { value: '144p', label: '144p' },
+        { value: '240p', label: '240p' },
+        { value: '360p', label: '360p' },
+        { value: '480p', label: '480p' },
+        { value: '720p', label: '720p (HD)' },
+        { value: '1080p', label: '1080p (Full HD)' },
+        { value: '1440p', label: '1440p (2K)' },
+        { value: '2160p', label: '2160p (4K)' },
+        { value: '4320p', label: '4320p (8K)' }
+    ];
+
+    const CATEGORY_SETTINGS = {
+        performance: ['disableAnimations', 'throttleTimers', 'lazyLoadImages', 'memoryLeakFix', 'optimizeThumbnails', 'blockNonH264', 'limitFps30'],
+        appearance: ['simplifyUI', 'disableBlurEffects', 'disableShadows', 'disableNotifications'],
+        blocking: ['removeAds', 'removeShorts', 'removeComments', 'removeTrending', 'removeLiveChat', 'removePromo'],
+        player: ['disableAutoplay', 'pauseOnLoad', 'limitVideoQuality', 'maxQuality', 'minQuality', 'disablePlayerGradients', 'disablePlayerWatermarkAndAnnotations', 'removeInfoAndPlayerCards', 'removeEndScreen'],
+        settings: ['showSettingsButton', 'accentColor']
+    };
+
+    const SELECT_SETTINGS = {
+        maxQuality: { options: 'quality', disabledWhen: 'limitVideoQuality' },
+        minQuality: { options: 'quality', disabledWhen: 'limitVideoQuality' },
+        accentColor: { options: 'color' }
+    };
+
+    const SETTINGS_I18N = {
+        disableAnimations: { en: { label: 'Disable animations', description: 'Removes all CSS animations and transitions' }, ru: { label: 'Отключить анимации', description: 'Убирает все CSS-анимации и переходы' } },
+        throttleTimers: { en: { label: 'Optimize timers', description: 'Slows down background JavaScript timers' }, ru: { label: 'Оптимизировать таймеры', description: 'Замедляет фоновые таймеры JavaScript' } },
+        lazyLoadImages: { en: { label: 'Lazy load images', description: 'Optimizes image loading performance' }, ru: { label: 'Ленивая загрузка изображений', description: 'Оптимизирует загрузку картинок' } },
+        memoryLeakFix: { en: { label: 'Memory leak fix', description: 'Fixes YouTube memory leaks' }, ru: { label: 'Исправление утечек памяти', description: 'Устраняет утечки памяти на YouTube' } },
+        optimizeThumbnails: { en: { label: 'Optimize thumbnails', description: 'Improves thumbnail loading' }, ru: { label: 'Оптимизация миниатюр', description: 'Улучшает загрузку превью' } },
+        blockNonH264: { en: { label: 'Block VP8/VP9/AV1 codecs', description: 'Force H.264 (reduces CPU load)' }, ru: { label: 'Блокировать кодеки VP8/VP9/AV1', description: 'Принудительно H.264 (снижает нагрузку на процессор)' } },
+        limitFps30: { en: { label: 'Limit video to 30 FPS', description: 'Prevents high frame rate streams (reduces CPU load)' }, ru: { label: 'Ограничить видео до 30 FPS', description: 'Запрещает потоки с высокой частотой кадров (снижает нагрузку на процессор)' } },
+
+        simplifyUI: { en: { label: 'Simplify interface', description: 'Minimalist YouTube experience' }, ru: { label: 'Упростить интерфейс', description: 'Минималистичный YouTube' } },
+        disableBlurEffects: { en: { label: 'Disable blur effects', description: 'Removes background blur' }, ru: { label: 'Отключить эффекты размытия', description: 'Убирает фоновое размытие' } },
+        disableShadows: { en: { label: 'Disable shadows', description: 'Removes shadow effects' }, ru: { label: 'Отключить тени', description: 'Убирает эффекты теней' } },
+        disableNotifications: { en: { label: 'Disable notifications', description: 'Hides notification badges' }, ru: { label: 'Отключить уведомления', description: 'Скрывает значки уведомлений' } },
+
+        removeAds: { en: { label: 'Remove ads', description: 'Blocks advertisements' }, ru: { label: 'Убрать рекламу', description: 'Блокирует рекламные блоки' } },
+        removeShorts: { en: { label: 'Remove Shorts', description: 'Hides YouTube Shorts completely' }, ru: { label: 'Убрать Shorts', description: 'Полностью скрывает YouTube Shorts' } },
+        removeComments: { en: { label: 'Remove comments', description: 'Hides comment sections' }, ru: { label: 'Убрать комментарии', description: 'Скрывает раздел комментариев' } },
+        removeTrending: { en: { label: 'Remove trending', description: 'Hides trending section' }, ru: { label: 'Убрать тренды', description: 'Скрывает раздел "В тренде"' } },
+        removeLiveChat: { en: { label: 'Remove live chat', description: 'Hides live chat on streams' }, ru: { label: 'Убрать прямой эфир', description: 'Скрывает чат на стримах' } },
+        removePromo: { en: { label: 'Remove promotions', description: 'Hides youtube promotions' }, ru: { label: 'Убрать промо', description: 'Скрывает промо-блоки YouTube' } },
+
+        disableAutoplay: { en: { label: 'Disable autoplay', description: 'Prevents automatic video playback' }, ru: { label: 'Отключить автовоспроизведение', description: 'Предотвращает автоматическое воспроизведение следующего видео' } },
+        pauseOnLoad: { en: { label: 'Pause video on page load', description: 'Automatically pauses video when you open a video page (until first click on player)' }, ru: { label: 'Пауза при загрузке видео', description: 'Автоматически ставит видео на паузу при открытии страницы (до первого клика по плееру)' } },
+        limitVideoQuality: { en: { label: 'Limit video quality', description: 'Sets maximum and minimum video quality' }, ru: { label: 'Ограничить качество видео', description: 'Устанавливает максимальное и минимальное качество видео' } },
+        maxQuality: { en: { label: 'Maximum quality' }, ru: { label: 'Максимальное качество' } },
+        minQuality: { en: { label: 'Minimum quality' }, ru: { label: 'Минимальное качество' } },
+        disablePlayerGradients: { en: { label: 'Disable player gradients', description: 'Removes top/bottom gradients' }, ru: { label: 'Отключить градиенты плеера', description: 'Убирает верхние/нижние градиенты' } },
+        disablePlayerWatermarkAndAnnotations: { en: { label: 'Disable watermark and annotations', description: 'Hides YouTube watermark and annotations' }, ru: { label: 'Отключить водяной знак и аннотации', description: 'Скрывает водяной знак YouTube и аннотации' } },
+        removeInfoAndPlayerCards: { en: { label: 'Remove info and player cards', description: 'Removes video info and player cards' }, ru: { label: 'Убрать карточки информации', description: 'Удаляет информационные карточки в плеере' } },
+        removeEndScreen: { en: { label: 'Remove end screen', description: 'Hides end screen recommendations' }, ru: { label: 'Убрать конечный экран', description: 'Скрывает рекомендации в конце видео' } },
+
+        showSettingsButton: { en: { label: 'Show settings button', description: 'Displays floating settings button' }, ru: { label: 'Показать кнопку настроек', description: 'Отображает плавающую кнопку настроек' } },
+        accentColor: { en: { label: 'Interface color' }, ru: { label: 'Цвет интерфейса' } }
+    };
+
+    // ============================================================================
     // SETTINGS UI
     // ============================================================================
     class SettingsUI {
@@ -1272,139 +1196,40 @@
         }
 
         getCategories() {
-            const colorOptions = [
-                { value: 'red', label: this.currentLanguage === 'ru' ? 'Красный' : 'Red' },
-                { value: 'blue', label: this.currentLanguage === 'ru' ? 'Синий' : 'Blue' }
-            ];
+            const lang = this.currentLanguage === 'ru' ? 'ru' : 'en';
 
-            const qualityOptions = [
-                { value: '144p', label: '144p' },
-                { value: '240p', label: '240p' },
-                { value: '360p', label: '360p' },
-                { value: '480p', label: '480p' },
-                { value: '720p', label: '720p (HD)' },
-                { value: '1080p', label: '1080p (Full HD)' },
-                { value: '1440p', label: '1440p (2K)' },
-                { value: '2160p', label: '2160p (4K)' }
-            ];
-
-            const categories = {
-                en: {
-                    '⚡ Performance': [
-                        { key: 'disableAnimations', label: 'Disable animations', description: 'Removes all CSS animations and transitions' },
-                        { key: 'throttleTimers', label: 'Optimize timers', description: 'Slows down background JavaScript timers' },
-                        { key: 'lazyLoadImages', label: 'Lazy load images', description: 'Optimizes image loading performance' },
-                        { key: 'memoryLeakFix', label: 'Memory leak fix', description: 'Fixes YouTube memory leaks' },
-                        { key: 'optimizeThumbnails', label: 'Optimize thumbnails', description: 'Improves thumbnail loading' },
-                        { key: 'blockNonH264', label: 'Block VP8/VP9/AV1 codecs', description: 'Force H.264 (reduces CPU load)' },
-                        { key: 'limitFps30', label: 'Limit video to 30 FPS', description: 'Prevents high frame rate streams (reduces CPU load)' },
-                    ],
-                    '🎨 Appearance & Layout': [
-                        { key: 'simplifyUI', label: 'Simplify interface', description: 'Minimalist YouTube experience' },
-                        { key: 'disableBlurEffects', label: 'Disable blur effects', description: 'Removes background blur' },
-                        { key: 'disableShadows', label: 'Disable shadows', description: 'Removes shadow effects' },
-                        { key: 'disableNotifications', label: 'Disable notifications', description: 'Hides notification badges' },
-                    ],
-                    '🚫 Content Blocking': [
-                        { key: 'removeAds', label: 'Remove ads', description: 'Blocks advertisements' },
-                        { key: 'removeShorts', label: 'Remove Shorts', description: 'Hides YouTube Shorts completely' },
-                        { key: 'removeComments', label: 'Remove comments', description: 'Hides comment sections' },
-                        { key: 'removeTrending', label: 'Remove trending', description: 'Hides trending section' },
-                        { key: 'removeLiveChat', label: 'Remove live chat', description: 'Hides live chat on streams' },
-                        { key: 'removePromo', label: 'Remove promotions', description: 'Hides youtube promotions' },
-                    ],
-                    '🎬 Player': [
-                        { key: 'disableAutoplay', label: 'Disable autoplay', description: 'Prevents automatic video playback' },
-                        { key: 'pauseOnLoad', label: 'Pause video on page load', description: 'Automatically pauses video when you open a video page (until first click on player)' },
-                        { key: 'limitVideoQuality', label: 'Limit video quality', description: 'Sets maximum and minimum video quality' },
-                        {
-                            type: 'select',
-                            key: 'maxQuality',
-                            label: 'Maximum quality',
-                            options: qualityOptions,
-                            disabled: !CONFIG.limitVideoQuality
-                        },
-                        {
-                            type: 'select',
-                            key: 'minQuality',
-                            label: 'Minimum quality',
-                            options: qualityOptions,
-                            disabled: !CONFIG.limitVideoQuality
-                        },
-                        { key: 'disablePlayerGradients', label: 'Disable player gradients', description: 'Removes top/bottom gradients' },
-                        { key: 'disablePlayerWatermarkAndAnnotations', label: 'Disable watermark and annotations', description: 'Hides YouTube watermark and annotations' },
-                        { key: 'removeInfoAndPlayerCards', label: 'Remove info and player cards', description: 'Removes video info and player cards' },
-                        { key: 'removeEndScreen', label: 'Remove end screen', description: 'Hides end screen recommendations' },
-                    ],
-                    '⚙️ OYO Settings': [
-                        { key: 'showSettingsButton', label: 'Show settings button', description: 'Displays floating settings button' },
-                        {
-                            type: 'select',
-                            key: 'accentColor',
-                            label: 'Interface color',
-                            options: colorOptions,
-                        },
-                    ],
-                },
-                ru: {
-                    '⚡ Производительность': [
-                        { key: 'disableAnimations', label: 'Отключить анимации', description: 'Убирает все CSS-анимации и переходы' },
-                        { key: 'throttleTimers', label: 'Оптимизировать таймеры', description: 'Замедляет фоновые таймеры JavaScript' },
-                        { key: 'lazyLoadImages', label: 'Ленивая загрузка изображений', description: 'Оптимизирует загрузку картинок' },
-                        { key: 'memoryLeakFix', label: 'Исправление утечек памяти', description: 'Устраняет утечки памяти на YouTube' },
-                        { key: 'optimizeThumbnails', label: 'Оптимизация миниатюр', description: 'Улучшает загрузку превью' },
-                        { key: 'blockNonH264', label: 'Блокировать кодеки VP8/VP9/AV1', description: 'Принудительно H.264 (снижает нагрузку на процессор)' },
-                        { key: 'limitFps30', label: 'Ограничить видео до 30 FPS', description: 'Запрещает потоки с высокой частотой кадров (снижает нагрузку на процессор)' },
-                    ],
-                    '🎨 Внешний вид и макет': [
-                        { key: 'simplifyUI', label: 'Упростить интерфейс', description: 'Минималистичный YouTube' },
-                        { key: 'disableBlurEffects', label: 'Отключить эффекты размытия', description: 'Убирает фоновое размытие' },
-                        { key: 'disableShadows', label: 'Отключить тени', description: 'Убирает эффекты теней' },
-                        { key: 'disableNotifications', label: 'Отключить уведомления', description: 'Скрывает значки уведомлений' },
-                    ],
-                    '🚫 Блокировка контента': [
-                        { key: 'removeAds', label: 'Убрать рекламу', description: 'Блокирует рекламные блоки' },
-                        { key: 'removeShorts', label: 'Убрать Shorts', description: 'Полностью скрывает YouTube Shorts' },
-                        { key: 'removeComments', label: 'Убрать комментарии', description: 'Скрывает раздел комментариев' },
-                        { key: 'removeTrending', label: 'Убрать тренды', description: 'Скрывает раздел "В тренде"' },
-                        { key: 'removeLiveChat', label: 'Убрать прямой эфир', description: 'Скрывает чат на стримах' },
-                        { key: 'removePromo', label: 'Убрать промо', description: 'Скрывает промо-блоки YouTube' },
-                    ],
-                    '🎬 Плеер': [
-                        { key: 'disableAutoplay', label: 'Отключить автовоспроизведение', description: 'Предотвращает автоматическое воспроизведение следующего видео' },
-                        { key: 'pauseOnLoad', label: 'Пауза при загрузке видео', description: 'Автоматически ставит видео на паузу при открытии страницы (до первого клика по плееру)' },
-                        { key: 'limitVideoQuality', label: 'Ограничить качество видео', description: 'Устанавливает максимальное и минимальное качество видео' },
-                        {
-                            type: 'select',
-                            key: 'maxQuality',
-                            label: 'Максимальное качество',
-                            options: qualityOptions,
-                            disabled: !CONFIG.limitVideoQuality
-                        },
-                        {
-                            type: 'select',
-                            key: 'minQuality',
-                            label: 'Минимальное качество',
-                            options: qualityOptions,
-                            disabled: !CONFIG.limitVideoQuality
-                        },
-                        { key: 'disablePlayerGradients', label: 'Отключить градиенты плеера', description: 'Убирает верхние/нижние градиенты' },
-                        { key: 'disablePlayerWatermarkAndAnnotations', label: 'Отключить водяной знак и аннотации', description: 'Скрывает водяной знак YouTube и аннотации' },
-                        { key: 'removeInfoAndPlayerCards', label: 'Убрать карточки информации', description: 'Удаляет информационные карточки в плеере' },
-                        { key: 'removeEndScreen', label: 'Убрать конечный экран', description: 'Скрывает рекомендации в конце видео' },
-                    ],
-                    '⚙️ Настройки OYO': [
-                        { key: 'showSettingsButton', label: 'Показать кнопку настроек', description: 'Отображает плавающую кнопку настроек' },
-                        {
-                            type: 'select',
-                            key: 'accentColor',
-                            label: 'Цвет интерфейса',
-                            options: colorOptions,
-                        },
-                    ],
-                }
+            const optionsByType = {
+                quality: QUALITY_OPTIONS,
+                color: [
+                    { value: 'red', label: lang === 'ru' ? 'Красный' : 'Red' },
+                    { value: 'blue', label: lang === 'ru' ? 'Синий' : 'Blue' }
+                ]
             };
-            return categories[this.currentLanguage] || categories.ru;
+
+            const result = {};
+
+            CATEGORY_IDS.forEach(catId => {
+                const title = CATEGORY_TITLES[catId][lang];
+
+                result[title] = CATEGORY_SETTINGS[catId].map(key => {
+                    const i18n = SETTINGS_I18N[key][lang];
+                    const select = SELECT_SETTINGS[key];
+
+                    if (select) {
+                        return {
+                            type: 'select',
+                            key,
+                            label: i18n.label,
+                            options: optionsByType[select.options],
+                            disabled: select.disabledWhen ? !CONFIG[select.disabledWhen] : false
+                        };
+                    }
+
+                    return { key, label: i18n.label, description: i18n.description };
+                });
+            });
+
+            return result;
         }
 
         getAllSettings() {
@@ -2390,7 +2215,7 @@
 
             const categories = this.getCategories();
             const categoryNames = Object.keys(categories);
-            const categoryIds = ['performance', 'appearance', 'blocking', 'player', 'settings'];
+            const categoryIds = CATEGORY_IDS;
 
             const tabsHeader = this.modal.querySelector('.ytoo-tabs-header');
             if (tabsHeader) {
@@ -2438,7 +2263,7 @@
 
             const versionEl = this.modal.querySelector('.ytoo-version');
             if (versionEl) {
-                versionEl.textContent = this.currentLanguage === 'ru' ? 'Версия 3.0 (RU/EN)' : 'Version 3.0 (RU/EN)';
+                versionEl.textContent = this.currentLanguage === 'ru' ? 'Версия 3.1.0 (RU/EN)' : 'Version 3.1.0 (RU/EN)';
             }
 
             const applyBtn = this.modal.querySelector('#yt-optimizer-apply');
@@ -2463,6 +2288,16 @@
                     this.tooltip.textContent = newText;
                 }
             }
+
+            try {
+                if (typeof GM_unregisterMenuCommand === 'function' && this.menuCommandId !== null && this.menuCommandId !== undefined) {
+                    GM_unregisterMenuCommand(this.menuCommandId);
+                }
+                const menuText = this.currentLanguage === 'ru'
+                    ? '⚙ Открыть настройки OYO'
+                    : '⚙ Open OYO Settings';
+                this.menuCommandId = GM_registerMenuCommand(menuText, () => this.open());
+            } catch (e) {}
         }
 
         handleTabClick(tabButton) {
@@ -2544,7 +2379,7 @@
                 const maxVal = key === 'maxQuality' ? select.value : this.workingConfig.maxQuality;
                 const minVal = key === 'minQuality' ? select.value : this.workingConfig.minQuality;
 
-                const qualityOrder = ['144p', '240p', '360p', '480p', '720p', '1080p', '1440p', '2160p'];
+                const qualityOrder = ['144p', '240p', '360p', '480p', '720p', '1080p', '1440p', '2160p', '4320p'];
                 const maxIndex = qualityOrder.indexOf(maxVal);
                 const minIndex = qualityOrder.indexOf(minVal);
 
@@ -2679,11 +2514,12 @@
                 this.createSettingsButton();
             }
 
+            this.menuCommandId = null;
             try {
                 const menuText = this.currentLanguage === 'ru'
                     ? '⚙ Открыть настройки OYO'
                     : '⚙ Open OYO Settings';
-                GM_registerMenuCommand(menuText, () => this.open());
+                this.menuCommandId = GM_registerMenuCommand(menuText, () => this.open());
             } catch (e) {}
 
             this.setupFullscreenHandlers();
@@ -2782,7 +2618,7 @@
 
             const categories = this.getCategories();
             const categoryNames = Object.keys(categories);
-            const categoryIds = ['performance', 'appearance', 'blocking', 'player', 'settings'];
+            const categoryIds = CATEGORY_IDS;
 
             categoryNames.forEach((cat, index) => {
                 const btn = document.createElement('button');
@@ -2828,7 +2664,7 @@
 
             const version = document.createElement('p');
             version.className = 'ytoo-version';
-            version.textContent = this.currentLanguage === 'ru' ? 'Версия 3.0 (RU/EN)' : 'Version 3.0 (RU/EN)';
+            version.textContent = this.currentLanguage === 'ru' ? 'Версия 3.1.0 (RU/EN)' : 'Version 3.1.0 (RU/EN)';
 
             titleContainer.appendChild(title);
             titleContainer.appendChild(version);
@@ -3001,7 +2837,6 @@
             { fn: applyMemoryLeakFix, name: 'Memory Leak Fix' },
             { fn: injectAdvancedCSS, name: 'Advanced CSS Injection' },
             { fn: disableAnimations, name: 'Animation Disabler' },
-            { fn: cleanUI, name: 'UI Cleaner' },
             { fn: optimizeTimers, name: 'Timer Optimizer' },
             { fn: optimizePlayer, name: 'Player Optimizer' },
             { fn: optimizeLazyLoading, name: 'Lazy Load Optimization' },
@@ -3059,24 +2894,13 @@
         document.addEventListener('yt-navigate-finish', handleSPANavigation);
         document.addEventListener('yt-page-data-fetched', handleSPANavigation);
 
-        const urlObserver = new MutationObserver(() => {
+        const unregisterUrlObserver = registerDomObserver(() => {
             handleSPANavigation();
-        });
-
-        urlObserver.observe(document.documentElement, {
-            childList: true,
-            subtree: true
         });
 
         function globalCleanup() {
             cleanupAll();
-            urlObserver.disconnect();
-
-            if (window.__ytOptimizerCleanupUI) {
-                try {
-                    window.__ytOptimizerCleanupUI();
-                } catch (e) {}
-            }
+            unregisterUrlObserver();
 
             window.ytOptimizerUI = null;
         }
