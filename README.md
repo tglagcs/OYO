@@ -77,9 +77,9 @@ _UI Screenshot (RU ver. — 3.0 settings panel)_
 ---
 ## 🛠️ Installation
 ### 1. Install a userscript manager
-- [Tampermonkey](https://www.tampermonkey.net/) (Recommended)
-- [Violentmonkey](https://violentmonkey.github.io/)
+- [Violentmonkey](https://violentmonkey.github.io/) (Recommended)
 - [Greasemonkey](https://www.greasespot.net/)
+- [Tampermonkey](https://www.tampermonkey.net/)
 
 ### 2. Install the script
 **Method 1 (Recommended):**
